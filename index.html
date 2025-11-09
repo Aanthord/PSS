@@ -1057,96 +1057,376 @@
             async registerServiceWorker() {
                 try {
                     if ('serviceWorker' in navigator) {
-                        // Create inline service worker for P2P coordination
+                        // Enhanced Service Worker with IndexedDB persistence and cross-tab coordination
                         const swCode = `
-                            const CACHE_NAME = 'pss-p2p-v2';
-                            const announcements = new Map();
-                            const discoveryChannels = new Set();
-                            let lastCleanup = Date.now();
+// PSS Enhanced Network Service Worker
+// Persistent P2P Node for Prayers, Saints & Saviors
+// Version 2.1 with IndexedDB and cross-tab sync
+const CACHE_NAME = 'prayers-network-v2';
+const DB_NAME = 'PrayersNetworkDB';
+const STORES = ['peers', 'prayers', 'parity', 'announcements'];
+let db;
+let peers = new Map();
+let announcements = new Map();
+let isOnline = false;
+let startTime = Date.now();
 
-                            // Enhanced cleanup every 30 seconds
-                            setInterval(() => {
-                                const now = Date.now();
-                                let cleaned = 0;
-                                
-                                for (const [nodeId, data] of announcements.entries()) {
-                                    if (now - data.timestamp > 10 * 60 * 1000) { // 10 minutes
-                                        announcements.delete(nodeId);
-                                        cleaned++;
-                                    }
-                                }
-                                
-                                if (cleaned > 0) {
-                                    console.log('🧹 SW cleaned', cleaned, 'stale announcements');
-                                }
-                                
-                                lastCleanup = now;
-                            }, 30000);
+// Initialize IndexedDB for persistent storage
+async function initDB() {
+    return new Promise((resolve, reject) => {
+        const request = indexedDB.open(DB_NAME, 2);
+        request.onerror = () => reject(request.error);
+        request.onsuccess = () => {
+            db = request.result;
+            resolve(db);
+        };
+        request.onupgradeneeded = (event) => {
+            const db = event.target.result;
+            STORES.forEach(storeName => {
+                if (!db.objectStoreNames.contains(storeName)) {
+                    const store = db.createObjectStore(storeName, { keyPath: 'id' });
+                    // Add indexes for efficient querying
+                    if (storeName === 'prayers') {
+                        store.createIndex('timestamp', 'timestamp', { unique: false });
+                        store.createIndex('category', 'category', { unique: false });
+                        store.createIndex('urgency', 'urgency', { unique: false });
+                    }
+                    if (storeName === 'peers' || storeName === 'announcements') {
+                        store.createIndex('timestamp', 'timestamp', { unique: false });
+                        store.createIndex('lastSeen', 'lastSeen', { unique: false });
+                    }
+                }
+            });
+        };
+    });
+}
 
-                            self.addEventListener('message', function(event) {
-                                const { type, data } = event.data;
-                                
-                                if (type === 'peer_announcement') {
-                                    const announcement = data;
-                                    announcements.set(announcement.nodeId, announcement);
-                                    
-                                    // Enhanced broadcast to all connected clients instantly
-                                    self.clients.matchAll({ includeUncontrolled: true }).then(clients => {
-                                        clients.forEach(client => {
-                                            try {
-                                                client.postMessage({
-                                                    type: 'peer_discovered',
-                                                    data: announcement,
-                                                    via: 'service-worker',
-                                                    timestamp: Date.now()
-                                                });
-                                            } catch (e) {
-                                                console.warn('SW broadcast failed:', e);
-                                            }
-                                        });
-                                    });
-                                    
-                                    console.log('🔧 SW stored announcement for:', announcement.nodeId.substr(0, 12));
-                                }
-                                
-                                if (type === 'get_announcements') {
-                                    const allAnnouncements = Array.from(announcements.values())
-                                        .filter(a => Date.now() - a.timestamp < 10 * 60 * 1000); // Only recent
-                                    
-                                    if (event.ports && event.ports[0]) {
-                                        event.ports[0].postMessage({
-                                            announcements: allAnnouncements,
-                                            count: allAnnouncements.length,
-                                            timestamp: Date.now()
-                                        });
-                                    }
-                                }
-                                
-                                if (type === 'get_stats') {
-                                    const stats = {
-                                        announcements: announcements.size,
-                                        lastCleanup: lastCleanup,
-                                        uptime: Date.now() - (self.swStartTime || Date.now())
-                                    };
-                                    
-                                    if (event.ports && event.ports[0]) {
-                                        event.ports[0].postMessage(stats);
-                                    }
-                                }
-                            });
+// Store data persistently with error handling
+async function storeData(storeName, data) {
+    try {
+        if (!db) await initDB();
+        const transaction = db.transaction([storeName], 'readwrite');
+        const store = transaction.objectStore(storeName);
+        
+        // Add timestamp if not present
+        if (!data.timestamp) {
+            data.timestamp = Date.now();
+        }
+        
+        await new Promise((resolve, reject) => {
+            const request = store.put(data);
+            request.onsuccess = () => resolve();
+            request.onerror = () => reject(request.error);
+        });
+        
+        console.log(\`🔧 SW stored \${storeName} data:\`, data.id || data.nodeId);
+        return true;
+    } catch (error) {
+        console.error(\`🔧 SW failed to store \${storeName} data:\`, error);
+        return false;
+    }
+}
 
-                            self.addEventListener('install', function(event) {
-                                console.log('🔧 SW Installing...');
-                                self.swStartTime = Date.now();
-                                self.skipWaiting();
-                            });
+// Get all data from a store
+async function getAllData(storeName, limit = 100) {
+    try {
+        if (!db) await initDB();
+        const transaction = db.transaction([storeName], 'readonly');
+        const store = transaction.objectStore(storeName);
+        
+        return new Promise((resolve, reject) => {
+            const request = store.getAll();
+            request.onsuccess = () => {
+                let results = request.result || [];
+                // Sort by timestamp, newest first, and limit results
+                results.sort((a, b) => (b.timestamp || 0) - (a.timestamp || 0));
+                if (results.length > limit) {
+                    results = results.slice(0, limit);
+                }
+                resolve(results);
+            };
+            request.onerror = () => reject(request.error);
+        });
+    } catch (error) {
+        console.error(\`🔧 SW failed to get all \${storeName} data:\`, error);
+        return [];
+    }
+}
 
-                            self.addEventListener('activate', function(event) {
-                                console.log('🔧 SW Activating...');
-                                event.waitUntil(self.clients.claim());
-                            });
+// Delete old data to manage storage
+async function cleanupOldData() {
+    try {
+        const maxAge = 15 * 60 * 1000; // 15 minutes for announcements
+        const prayerMaxAge = 7 * 24 * 60 * 60 * 1000; // 7 days for prayers
+        const now = Date.now();
+        
+        // Clean announcements and peers more frequently
+        for (const storeName of ['announcements', 'peers']) {
+            const allData = await getAllData(storeName, 1000);
+            if (allData.length > 0) {
+                const transaction = db.transaction([storeName], 'readwrite');
+                const store = transaction.objectStore(storeName);
+                
+                allData.forEach(item => {
+                    if (item.timestamp && (now - item.timestamp) > maxAge) {
+                        store.delete(item.id);
+                    }
+                });
+            }
+        }
+        
+        // Clean old prayers less frequently
+        const oldPrayers = await getAllData('prayers', 1000);
+        if (oldPrayers.length > 0) {
+            const prayerTransaction = db.transaction(['prayers'], 'readwrite');
+            const prayerStore = prayerTransaction.objectStore('prayers');
+            
+            oldPrayers.forEach(item => {
+                if (item.timestamp && (now - item.timestamp) > prayerMaxAge) {
+                    prayerStore.delete(item.id);
+                }
+            });
+        }
+        
+        console.log('🔧 SW completed enhanced data cleanup');
+    } catch (error) {
+        console.error('🔧 SW error during data cleanup:', error);
+    }
+}
 
-                            console.log('🔧 Enhanced Service Worker for P2P coordination loaded');
+// Enhanced cross-tab broadcasting
+function broadcastToClients(type, data) {
+    self.clients.matchAll({ includeUncontrolled: true }).then(clients => {
+        clients.forEach(client => {
+            try {
+                client.postMessage({
+                    type: type,
+                    data: data,
+                    timestamp: Date.now(),
+                    via: 'enhanced-service-worker'
+                });
+            } catch (e) {
+                console.warn('🔧 SW broadcast failed:', e);
+            }
+        });
+    });
+    
+    // Also use localStorage for additional cross-tab sync
+    try {
+        const broadcast = {
+            id: 'sw_broadcast_' + Math.random().toString(36).substr(2, 9),
+            type: type,
+            data: data,
+            timestamp: Date.now(),
+            sender: 'enhanced-service-worker'
+        };
+        
+        const broadcasts = JSON.parse(localStorage.getItem('sw_broadcasts_v2') || '[]');
+        broadcasts.push(broadcast);
+        
+        // Keep only recent broadcasts
+        if (broadcasts.length > 30) {
+            broadcasts.splice(0, broadcasts.length - 30);
+        }
+        
+        localStorage.setItem('sw_broadcasts_v2', JSON.stringify(broadcasts));
+    } catch (error) {
+        console.error('🔧 SW error in localStorage broadcast:', error);
+    }
+}
+
+// Message handling from main thread
+self.addEventListener('message', async function(event) {
+    const { type, data } = event.data;
+    console.log('🔧 Enhanced SW received message:', type);
+    
+    try {
+        switch (type) {
+            case 'peer_announcement':
+                const announcement = data;
+                announcements.set(announcement.nodeId, announcement);
+                await storeData('announcements', { id: announcement.nodeId, ...announcement });
+                
+                // Broadcast to all connected clients
+                broadcastToClients('peer_discovered', announcement);
+                console.log('🔧 Enhanced SW stored and broadcast announcement for:', announcement.nodeId.substr(0, 12));
+                break;
+                
+            case 'get_announcements':
+                let allAnnouncements;
+                try {
+                    // Get from IndexedDB first
+                    allAnnouncements = await getAllData('announcements', 50);
+                    // Add in-memory announcements
+                    announcements.forEach((ann, id) => {
+                        if (!allAnnouncements.find(a => a.nodeId === id)) {
+                            allAnnouncements.push(ann);
+                        }
+                    });
+                } catch (e) {
+                    // Fallback to in-memory only
+                    allAnnouncements = Array.from(announcements.values());
+                }
+                
+                if (event.ports && event.ports[0]) {
+                    event.ports[0].postMessage({
+                        announcements: allAnnouncements.filter(a => 
+                            Date.now() - a.timestamp < 15 * 60 * 1000 // Only recent
+                        ),
+                        count: allAnnouncements.length,
+                        timestamp: Date.now()
+                    });
+                }
+                break;
+                
+            case 'register_peer':
+                peers.set(data.nodeId, { ...data, lastSeen: Date.now() });
+                await storeData('peers', { id: data.nodeId, ...data });
+                console.log('🔧 Enhanced SW registered peer:', data.nodeId.substr(0, 12));
+                break;
+                
+            case 'store_prayer':
+                const prayerStored = await storeData('prayers', data);
+                if (prayerStored) {
+                    broadcastToClients('prayer_received', data);
+                }
+                break;
+                
+            case 'get_network_status':
+                if (event.ports && event.ports[0]) {
+                    event.ports[0].postMessage({
+                        peers: peers.size,
+                        announcements: announcements.size,
+                        isOnline,
+                        uptime: Date.now() - startTime,
+                        dbReady: !!db,
+                        algorithm: 'Enhanced SW P2P v2.1'
+                    });
+                }
+                break;
+                
+            case 'get_prayers':
+                const prayers = await getAllData('prayers', data?.limit || 50);
+                if (event.ports && event.ports[0]) {
+                    event.ports[0].postMessage({
+                        type: 'PRAYERS_DATA',
+                        prayers: prayers
+                    });
+                }
+                break;
+                
+            case 'cleanup':
+                await cleanupOldData();
+                break;
+                
+            default:
+                console.log('🔧 Enhanced SW unknown message type:', type);
+        }
+    } catch (error) {
+        console.error('🔧 Enhanced SW error handling message:', error);
+    }
+});
+
+// Periodic maintenance and peer discovery
+async function enhancedMaintenance() {
+    try {
+        console.log('🔧 Enhanced SW maintenance cycle...');
+        
+        // Clean up old peers and announcements
+        const now = Date.now();
+        const maxAge = 10 * 60 * 1000; // 10 minutes
+        
+        // Clean in-memory data
+        const currentPeers = Array.from(peers.entries());
+        currentPeers.forEach(([peerId, peerData]) => {
+            if (now - (peerData.lastSeen || 0) > maxAge) {
+                peers.delete(peerId);
+            }
+        });
+        
+        const currentAnnouncements = Array.from(announcements.entries());
+        currentAnnouncements.forEach(([nodeId, announcement]) => {
+            if (now - (announcement.timestamp || 0) > maxAge) {
+                announcements.delete(nodeId);
+            }
+        });
+        
+        // Update online status
+        isOnline = peers.size > 0 || announcements.size > 0 || navigator.onLine;
+        
+        // Periodic IndexedDB cleanup
+        if (Math.random() < 0.15) { // 15% chance each cycle
+            await cleanupOldData();
+        }
+        
+        console.log(\`🔧 Enhanced SW maintenance complete. Peers: \${peers.size}, Announcements: \${announcements.size}\`);
+    } catch (error) {
+        console.error('🔧 Error during enhanced maintenance:', error);
+    }
+}
+
+// Installation event
+self.addEventListener('install', function(event) {
+    console.log('🔧 Enhanced PSS Service Worker installing...');
+    event.waitUntil(
+        Promise.all([
+            initDB(),
+            self.skipWaiting()
+        ])
+    );
+});
+
+// Activation event
+self.addEventListener('activate', function(event) {
+    console.log('🔧 Enhanced PSS Service Worker activating...');
+    event.waitUntil(
+        Promise.all([
+            clients.claim(),
+            enhancedMaintenance()
+        ])
+    );
+});
+
+// Background sync for enhanced coordination
+self.addEventListener('sync', event => {
+    console.log('🔧 Enhanced SW sync event:', event.tag);
+    if (event.tag === 'enhanced-peer-discovery') {
+        event.waitUntil(enhancedMaintenance());
+    } else if (event.tag === 'enhanced-cleanup') {
+        event.waitUntil(cleanupOldData());
+    }
+});
+
+// Periodic enhanced maintenance (every 90 seconds)
+setInterval(() => {
+    enhancedMaintenance();
+}, 90000);
+
+// Initialize when service worker starts
+Promise.all([
+    initDB(),
+    enhancedMaintenance()
+]).then(() => {
+    console.log('🔧 Enhanced Service Worker: P2P network node active with IndexedDB');
+    isOnline = true;
+}).catch(error => {
+    console.error('🔧 Enhanced Service Worker initialization failed:', error);
+});
+
+// Enhanced fetch handler for offline capability
+self.addEventListener('fetch', event => {
+    if (event.request.method === 'GET' && 
+        event.request.url.startsWith(self.location.origin)) {
+        
+        event.respondWith(
+            caches.match(event.request)
+                .then(response => response || fetch(event.request))
+                .catch(() => new Response('Enhanced P2P Network - Offline'))
+        );
+    }
+});
+
+console.log('🔧 Enhanced PSS Service Worker v2.1 loaded with IndexedDB support');
                         `;
 
                         const blob = new Blob([swCode], { type: 'application/javascript' });
@@ -1157,20 +1437,54 @@
                         // Wait for service worker to be ready
                         await navigator.serviceWorker.ready;
                         
-                        this.debug('🔧 Enhanced Service Worker registered for P2P coordination', 'success');
+                        this.debug('🔧 Enhanced Service Worker with IndexedDB registered', 'success');
                         
-                        // Listen for peer discoveries from service worker
+                        // Enhanced message handling from service worker
                         navigator.serviceWorker.addEventListener('message', (event) => {
+                            this.debug(`🔧 SW message received: ${event.data.type}`, 'info');
                             if (event.data.type === 'peer_discovered') {
                                 this.handleServiceWorkerPeerDiscovery(event.data.data);
+                            } else if (event.data.type === 'prayer_received') {
+                                this.handlePrayerReceived(event.data.data);
                             }
                         });
                         
-                        this.serviceWorkerReady = true;
+                        // Wait for Service Worker to be ready and controlled
+                        let swReadyAttempts = 0;
+                        const waitForSWController = async () => {
+                            while (swReadyAttempts < 20 && !navigator.serviceWorker.controller) {
+                                await new Promise(resolve => setTimeout(resolve, 250));
+                                swReadyAttempts++;
+                                this.debug(`⏳ Waiting for SW controller... (${swReadyAttempts}/20)`, 'info');
+                            }
+                            
+                            if (navigator.serviceWorker.controller) {
+                                this.debug('🔧 SW controller ready - registering node', 'success');
+                                
+                                // Register this node with service worker
+                                navigator.serviceWorker.controller.postMessage({
+                                    type: 'register_peer',
+                                    data: {
+                                        nodeId: this.nodeId,
+                                        timestamp: Date.now(),
+                                        features: ['enhanced-p2p', 'webrtc', 'indexeddb'],
+                                        version: '2.1'
+                                    }
+                                });
+                                
+                                this.serviceWorkerReady = true;
+                            } else {
+                                this.debug('❌ SW controller not available after 5 seconds', 'error');
+                                this.serviceWorkerReady = false;
+                            }
+                        };
+                        
+                        // Start waiting for controller in background
+                        waitForSWController();
                         return true;
                     }
                 } catch (error) {
-                    this.debug('❌ ServiceWorker registration failed: ' + error.message, 'error');
+                    this.debug('❌ Enhanced ServiceWorker registration failed: ' + error.message, 'error');
                 }
                 return false;
             }
@@ -1476,19 +1790,140 @@
                     userAgent: navigator.userAgent.split(')')[0] + ')', // Partial UA for identification
                 };
                 
-                // Multi-channel discovery approach
+                // Multi-channel discovery approach with global fallback
                 const discoveryPromises = [
                     this.announceViaBroadcastChannel(announcement),
                     this.announceViaServiceWorker(announcement), 
-                    this.announceViaLocalStorage(announcement)
+                    this.announceViaLocalStorage(announcement),
+                    this.announceViaGlobalRendezvous(announcement)
                 ];
                 
                 try {
                     const results = await Promise.allSettled(discoveryPromises);
                     const successful = results.filter(r => r.status === 'fulfilled').length;
-                    this.debug(`📡 Enhanced announcement: ${successful}/3 channels successful`, 'success');
+                    this.debug(`📡 Enhanced announcement: ${successful}/4 channels successful`, 'success');
                 } catch (error) {
                     this.debug('❌ Failed to announce: ' + error.message, 'error');
+                }
+            }
+
+            async announceViaGlobalRendezvous(announcement) {
+                // Global rendezvous with Mikey's persistent node
+                const globalEndpoints = [
+                    `http://185.187.243.129:3000/api/announce`,
+                    `https://185.187.243.129:3001/api/announce`,
+                    `http://185.187.243.129:8080/peers/announce`,
+                    // Fallback to HTTP-based endpoints
+                    'https://httpbin.org/post',
+                    'https://postman-echo.com/post'
+                ];
+                
+                let successCount = 0;
+                
+                for (const endpoint of globalEndpoints) {
+                    try {
+                        const isGlobalNode = endpoint.includes('185.187.243.129');
+                        const payload = {
+                            type: isGlobalNode ? 'peer_announcement' : 'pss_peer_announce',
+                            room: 'prayers_saints_saviors_v2',
+                            data: announcement,
+                            timestamp: Date.now(),
+                            protocol_version: '2.1'
+                        };
+
+                        const response = await fetch(endpoint, {
+                            method: 'POST',
+                            headers: { 
+                                'Content-Type': 'application/json',
+                                'X-Network-Protocol': 'PSS-Enhanced-P2P',
+                                'X-Node-Version': '2.1'
+                            },
+                            body: JSON.stringify(payload),
+                            signal: AbortSignal.timeout(isGlobalNode ? 8000 : 3000) // Longer timeout for global node
+                        });
+                        
+                        if (response.ok) {
+                            successCount++;
+                            if (isGlobalNode) {
+                                this.debug(`🌍 Global node announce ✓ ${endpoint.split('/')[2]}`, 'success');
+                                
+                                // Try to get peer list from global node
+                                try {
+                                    const peersResponse = await fetch(endpoint.replace('/announce', '/peers'), {
+                                        method: 'GET',
+                                        headers: { 'X-Network-Protocol': 'PSS-Enhanced-P2P' },
+                                        signal: AbortSignal.timeout(5000)
+                                    });
+                                    
+                                    if (peersResponse.ok) {
+                                        const peersData = await peersResponse.json();
+                                        if (peersData.peers && Array.isArray(peersData.peers)) {
+                                            this.handleGlobalPeerList(peersData.peers);
+                                        }
+                                    }
+                                } catch (e) {
+                                    console.log('Could not fetch peer list from global node:', e.message);
+                                }
+                            } else {
+                                this.debug(`🌐 Backup rendezvous ${endpoint.split('//')[1].split('/')[0]} ✓`, 'success');
+                            }
+                        }
+                    } catch (error) {
+                        const domain = endpoint.split('//')[1]?.split('/')[0] || endpoint;
+                        const isGlobalNode = domain.includes('185.187.243.129');
+                        if (isGlobalNode) {
+                            this.debug(`❌ Global node ${domain} failed: ${error.message}`, 'error');
+                        } else {
+                            this.debug(`❌ Backup rendezvous ${domain} failed`, 'error');
+                        }
+                    }
+                }
+                
+                return successCount > 0;
+            }
+
+            handleGlobalPeerList(peers) {
+                const now = Date.now();
+                let discoveredCount = 0;
+                
+                for (const peer of peers) {
+                    // Skip if it's our own node or too old
+                    if (peer.nodeId === this.nodeId || !peer.nodeId || !peer.timestamp) {
+                        continue;
+                    }
+                    
+                    const peerAge = now - peer.timestamp;
+                    if (peerAge > 15 * 60 * 1000) { // Skip peers older than 15 minutes
+                        continue;
+                    }
+                    
+                    // Add to discovered peers if not already connected
+                    if (!this.connections.has(peer.nodeId) && 
+                        !this.discoveredPeers.has(peer.nodeId) &&
+                        this.connections.size < this.networkConfig.maxConnections) {
+                        
+                        this.discoveredPeers.set(peer.nodeId, {
+                            id: peer.nodeId,
+                            vector: peer.vector || [],
+                            lastSeen: peer.timestamp,
+                            connected: false,
+                            features: peer.features || [],
+                            version: peer.version || '1.0',
+                            via: 'global-node',
+                            distance: this.calculateAdvancedDistance(this.vector, peer.vector || [])
+                        });
+                        
+                        discoveredCount++;
+                        
+                        // Try to connect with random delay
+                        setTimeout(() => {
+                            this.connectToPeer(peer.nodeId);
+                        }, Math.random() * 3000 + 1000); // 1-4 second delay
+                    }
+                }
+                
+                if (discoveredCount > 0) {
+                    this.debug(`🌍 Global node provided ${discoveredCount} peers`, 'success');
                 }
             }
 
@@ -1513,13 +1948,31 @@
 
             async announceViaServiceWorker(announcement) {
                 try {
-                    if ('serviceWorker' in navigator && navigator.serviceWorker.controller && this.serviceWorkerReady) {
-                        navigator.serviceWorker.controller.postMessage({
-                            type: 'peer_announcement',
-                            data: announcement
-                        });
-                        this.debug('🔧 ServiceWorker announce sent', 'success');
-                        return true;
+                    if ('serviceWorker' in navigator) {
+                        // Check if Service Worker is actually ready and controlled
+                        if (!navigator.serviceWorker.controller) {
+                            this.debug('⚠️ No SW controller - waiting for SW...', 'info');
+                            await navigator.serviceWorker.ready;
+                            
+                            // Wait a bit more for controller to be available
+                            let attempts = 0;
+                            while (!navigator.serviceWorker.controller && attempts < 10) {
+                                await new Promise(resolve => setTimeout(resolve, 200));
+                                attempts++;
+                            }
+                        }
+                        
+                        if (navigator.serviceWorker.controller && this.serviceWorkerReady) {
+                            navigator.serviceWorker.controller.postMessage({
+                                type: 'peer_announcement',
+                                data: announcement
+                            });
+                            this.debug('🔧 ServiceWorker announce sent to controller', 'success');
+                            return true;
+                        } else {
+                            this.debug('❌ SW controller not available yet', 'error');
+                            return false;
+                        }
                     }
                 } catch (error) {
                     this.debug('❌ ServiceWorker failed: ' + error.message, 'error');
@@ -1625,6 +2078,47 @@
             async discoverPeers() {
                 await this.announceToNetwork();
                 await this.searchForPeers();
+                await this.searchGlobalNode();
+            }
+
+            async searchGlobalNode() {
+                // Periodic discovery from global rendezvous node
+                if (Math.random() < 0.3) { // 30% chance each discovery cycle
+                    try {
+                        const globalEndpoints = [
+                            `http://185.187.243.129:3000/api/peers`,
+                            `https://185.187.243.129:3001/api/peers`,
+                            `http://185.187.243.129:8080/peers/list`
+                        ];
+                        
+                        for (const endpoint of globalEndpoints) {
+                            try {
+                                const response = await fetch(endpoint, {
+                                    method: 'GET',
+                                    headers: { 
+                                        'X-Network-Protocol': 'PSS-Enhanced-P2P',
+                                        'X-Node-ID': this.nodeId 
+                                    },
+                                    signal: AbortSignal.timeout(6000)
+                                });
+                                
+                                if (response.ok) {
+                                    const data = await response.json();
+                                    if (data.peers && Array.isArray(data.peers)) {
+                                        this.handleGlobalPeerList(data.peers);
+                                        this.debug(`🌍 Global discovery from ${endpoint.split('/')[2]}`, 'success');
+                                        break; // Success, no need to try other endpoints
+                                    }
+                                }
+                            } catch (e) {
+                                // Silent fail, try next endpoint
+                                continue;
+                            }
+                        }
+                    } catch (error) {
+                        // Silent fail for global discovery
+                    }
+                }
             }
 
             async searchForPeers() {
@@ -1873,20 +2367,33 @@
             }
             
             getNetworkStats() {
+                const globalPeers = Array.from(this.discoveredPeers.values())
+                    .filter(peer => peer.via === 'global-node').length;
+                
                 return {
                     nodeId: this.nodeId,
                     isOnline: this.isOnline,
                     connections: this.connections.size,
                     discoveredPeers: this.discoveredPeers.size,
+                    globalPeers: globalPeers,
                     prayers: this.prayers.size,
                     uptime: Date.now() - this.startTime,
                     algorithm: 'Enhanced P2P',
                     version: '2.1',
                     quality: this.calculateNetworkQuality(),
                     routes: this.routingTable.size,
-                    features: ['enhanced-enhanced', 'service-worker', 'broadcast-channel', 'mesh-topology', 'humanitarian-coordination'],
-                    serviceWorker: this.serviceWorkerReady
+                    features: ['enhanced-enhanced', 'service-worker', 'broadcast-channel', 'global-rendezvous', 'mesh-topology', 'humanitarian-coordination'],
+                    serviceWorker: this.serviceWorkerReady,
+                    globalRendezvous: globalPeers > 0 || this.hasGlobalConnectivity()
                 };
+            }
+
+            hasGlobalConnectivity() {
+                // Check if we've successfully connected to the global rendezvous recently
+                const recentGlobalActivity = Array.from(this.discoveredPeers.values())
+                    .some(peer => peer.via === 'global-node' && 
+                          Date.now() - peer.lastSeen < 5 * 60 * 1000); // 5 minutes
+                return recentGlobalActivity;
             }
 
             getPerformanceHistory() {
@@ -2915,7 +3422,92 @@ ${peersInfo.length > 5 ? '...' : ''}`);
                             },
                             className: 'btn',
                             style: { background: '#2196F3' }
-                        }, '📊 Enhanced Stats')
+                        }, '📊 Enhanced Stats'),
+                        
+                        React.createElement('button', {
+                            onClick: async () => {
+                                if (networkRef.current) {
+                                    const net = networkRef.current;
+                                    console.log('🔧 === ENHANCED NETWORK DIAGNOSTICS ===');
+                                    console.log('Service Worker Ready:', net.serviceWorkerReady);
+                                    console.log('SW Controller:', navigator.serviceWorker.controller ? 'Available' : 'Missing');
+                                    console.log('SW Registration:', await navigator.serviceWorker.getRegistration());
+                                    
+                                    // Test Service Worker communication
+                                    if (navigator.serviceWorker.controller) {
+                                        const channel = new MessageChannel();
+                                        navigator.serviceWorker.controller.postMessage({
+                                            type: 'get_network_status'
+                                        }, [channel.port2]);
+                                        
+                                        channel.port1.onmessage = (event) => {
+                                            console.log('🔧 SW Status Response:', event.data);
+                                        };
+                                    }
+                                    
+                                    // Test localStorage announcements
+                                    const announcements = JSON.parse(localStorage.getItem('p2p_announcements_v2') || '[]');
+                                    console.log('💾 Local Storage Announcements:', announcements.length);
+                                    
+                                    // Test BroadcastChannel
+                                    try {
+                                        const testChannel = new BroadcastChannel('pss_p2p_discovery_v2');
+                                        testChannel.postMessage({ type: 'test', nodeId: net.nodeId });
+                                        testChannel.close();
+                                        console.log('📻 BroadcastChannel test sent');
+                                    } catch (e) {
+                                        console.log('❌ BroadcastChannel error:', e);
+                                    }
+                                    
+                                    // Test Global Rendezvous
+                                    console.log('🌍 Testing Global Rendezvous (185.187.243.129)...');
+                                    try {
+                                        const globalResponse = await fetch('http://185.187.243.129:3000/api/peers', {
+                                            method: 'GET',
+                                            headers: { 'X-Network-Protocol': 'PSS-Enhanced-P2P' },
+                                            signal: AbortSignal.timeout(5000)
+                                        });
+                                        
+                                        if (globalResponse.ok) {
+                                            const data = await globalResponse.json();
+                                            console.log('🌍 Global node response:', data);
+                                        } else {
+                                            console.log('❌ Global node responded with:', globalResponse.status);
+                                        }
+                                    } catch (e) {
+                                        console.log('❌ Global node connection failed:', e.message);
+                                        
+                                        // Try backup endpoint
+                                        try {
+                                            const backupResponse = await fetch('https://httpbin.org/post', {
+                                                method: 'POST',
+                                                headers: { 'Content-Type': 'application/json' },
+                                                body: JSON.stringify({ type: 'connectivity_test', timestamp: Date.now() }),
+                                                signal: AbortSignal.timeout(3000)
+                                            });
+                                            console.log('🌐 Backup endpoint reachable:', backupResponse.ok);
+                                        } catch (e2) {
+                                            console.log('❌ All external endpoints failed - network isolation detected');
+                                        }
+                                    }
+                                    
+                                    // Force announcement
+                                    await net.announceToNetwork();
+                                    console.log('📡 Forced network announcement with global fallback');
+                                    
+                                    // Global peer search
+                                    await net.searchGlobalNode();
+                                    console.log('🔍 Executed global peer search');
+                                    
+                                    const stats = net.getNetworkStats();
+                                    console.log('📊 Current Network Stats:', stats);
+                                    
+                                    alert('Enhanced diagnostics complete - check console for details');
+                                }
+                            },
+                            className: 'btn',
+                            style: { background: '#9c27b0' }
+                        }, '🔧 SW Diagnostics')
                     )
                 ),
 
@@ -2934,9 +3526,9 @@ ${peersInfo.length > 5 ? '...' : ''}`);
                     ),
                     React.createElement('div', { className: 'stat' },
                         React.createElement('span', { className: 'stat-value' }, 
-                            networkStats.serviceWorker ? '🔧' : '⚠️'
+                            networkStats.globalRendezvous ? '🌍' : '🔍'
                         ),
-                        React.createElement('span', { className: 'stat-label' }, 'Service Worker')
+                        React.createElement('span', { className: 'stat-label' }, 'Global Network')
                     )
                 ),
 
