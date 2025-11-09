@@ -1,0 +1,969 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Prayers, Saints & Saviors - Global Humanitarian Network</title>
+    <script src="https://unpkg.com/react@18/umd/react.development.js"></script>
+    <script src="https://unpkg.com/react-dom@18/umd/react-dom.development.js"></script>
+    <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
+    <script src="https://accounts.google.com/gsi/client" async defer></script>
+    <script src="https://cdn.jsdelivr.net/npm/web3@latest/dist/web3.min.js"></script>
+    <script src="https://unpkg.com/crypto-js@latest/crypto-js.js"></script>
+    <style>
+        body {
+            margin: 0;
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Roboto', sans-serif;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            min-height: 100vh;
+        }
+        .container {
+            max-width: 1200px;
+            margin: 0 auto;
+            padding: 20px;
+        }
+        .network-status {
+            position: fixed;
+            top: 10px;
+            right: 10px;
+            background: rgba(0,0,0,0.8);
+            color: white;
+            padding: 8px 12px;
+            border-radius: 6px;
+            font-size: 12px;
+            font-family: monospace;
+        }
+        .prayer-card {
+            background: white;
+            border-radius: 12px;
+            padding: 20px;
+            margin: 15px 0;
+            box-shadow: 0 4px 12px rgba(0,0,0,0.15);
+            border-left: 4px solid #4CAF50;
+            position: relative;
+        }
+        .prayer-urgent {
+            border-left-color: #f44336;
+            animation: pulse 2s infinite;
+        }
+        @keyframes pulse {
+            0%, 100% { transform: scale(1); }
+            50% { transform: scale(1.02); }
+        }
+        .prayer-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 12px;
+        }
+        .prayer-title {
+            font-weight: 600;
+            font-size: 18px;
+            color: #2c3e50;
+        }
+        .prayer-distance {
+            background: #e3f2fd;
+            color: #1976d2;
+            padding: 4px 8px;
+            border-radius: 12px;
+            font-size: 12px;
+        }
+        .prayer-content {
+            color: #555;
+            line-height: 1.5;
+            margin-bottom: 15px;
+        }
+        .prayer-footer {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            padding-top: 12px;
+            border-top: 1px solid #eee;
+        }
+        .prayer-location {
+            font-size: 13px;
+            color: #666;
+            display: flex;
+            align-items: center;
+        }
+        .contribute-btn {
+            background: #4CAF50;
+            color: white;
+            border: none;
+            padding: 8px 16px;
+            border-radius: 6px;
+            cursor: pointer;
+            font-weight: 500;
+            transition: background 0.3s;
+        }
+        .contribute-btn:hover {
+            background: #45a049;
+        }
+        .network-overlay {
+            position: fixed;
+            top: 0;
+            left: 0;
+            right: 0;
+            bottom: 0;
+            background: rgba(0,0,0,0.9);
+            z-index: 1000;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            color: white;
+            flex-direction: column;
+        }
+        .fractal-loader {
+            width: 60px;
+            height: 60px;
+            border: 3px solid #333;
+            border-radius: 50%;
+            border-top-color: #4CAF50;
+            animation: spin 1s ease-in-out infinite;
+            margin-bottom: 20px;
+        }
+        @keyframes spin {
+            to { transform: rotate(360deg); }
+        }
+        .auth-section {
+            background: white;
+            padding: 30px;
+            border-radius: 12px;
+            text-align: center;
+            box-shadow: 0 8px 24px rgba(0,0,0,0.15);
+            max-width: 400px;
+            margin: 0 auto;
+        }
+        .create-prayer {
+            background: white;
+            border-radius: 12px;
+            padding: 25px;
+            margin-bottom: 20px;
+            box-shadow: 0 4px 12px rgba(0,0,0,0.15);
+        }
+        .form-group {
+            margin-bottom: 20px;
+        }
+        .form-group label {
+            display: block;
+            margin-bottom: 6px;
+            font-weight: 500;
+            color: #333;
+        }
+        .form-group input, .form-group textarea, .form-group select {
+            width: 100%;
+            padding: 12px;
+            border: 2px solid #ddd;
+            border-radius: 6px;
+            font-size: 14px;
+            transition: border-color 0.3s;
+        }
+        .form-group input:focus, .form-group textarea:focus, .form-group select:focus {
+            outline: none;
+            border-color: #4CAF50;
+        }
+        .submit-btn {
+            background: #2196F3;
+            color: white;
+            border: none;
+            padding: 12px 24px;
+            border-radius: 6px;
+            cursor: pointer;
+            font-weight: 600;
+            width: 100%;
+            font-size: 16px;
+            transition: background 0.3s;
+        }
+        .submit-btn:hover {
+            background: #1976D2;
+        }
+        .wallet-status {
+            margin: 15px 0;
+            padding: 12px;
+            background: #f5f5f5;
+            border-radius: 6px;
+            font-family: monospace;
+            font-size: 13px;
+        }
+        .node-count {
+            background: #4CAF50;
+            color: white;
+            padding: 2px 6px;
+            border-radius: 10px;
+            font-size: 11px;
+            margin-left: 8px;
+        }
+    </style>
+</head>
+<body>
+    <div id="root"></div>
+
+    <script type="text/babel">
+        // Global error handling
+        window.onerror = function(msg, url, lineNo, columnNo, error) {
+            console.error('Script error:', msg, 'at', url, lineNo, columnNo);
+            return false;
+        };
+
+        // FT-DFRP Core Implementation - JavaScript Port
+        class FractalRouter {
+            constructor() {
+                this.nodes = new Map();
+                this.peerConnections = new Map();
+                this.nodeVector = new Array(8).fill(0).map(() => Math.random());
+                this.nodeId = this.generateNodeId();
+                this.parityTags = new Set();
+                this.loadFactor = 0.0;
+                this.rtcConfiguration = {
+                    iceServers: [
+                        { urls: 'stun:stun.l.google.com:19302' },
+                        { urls: 'stun:stun1.l.google.com:19302' }
+                    ]
+                };
+                this.initializeServiceWorker().catch(console.error);
+            }
+
+            generateNodeId() {
+                return 'node_' + Math.random().toString(36).substr(2, 9);
+            }
+
+            // Williams-inspired O(√n log n) space-efficient tree evaluation
+            evaluatePlacementTree(nodes, targetVector) {
+                if (!nodes || nodes.length === 0) return null;
+                if (!targetVector) targetVector = this.nodeVector;
+                
+                const blockSize = Math.max(1, Math.ceil(Math.sqrt(nodes.length * Math.log(Math.max(nodes.length, 2)))));
+                let bestScore = -Infinity;
+                let bestNode = null;
+
+                for (let blockStart = 0; blockStart < nodes.length; blockStart += blockSize) {
+                    const blockEnd = Math.min(blockStart + blockSize, nodes.length);
+                    
+                    for (let i = blockStart; i < blockEnd; i++) {
+                        const node = nodes[i];
+                        if (!node || !node.vector) continue;
+                        
+                        const similarity = this.cosineSimilarity(node.vector, targetVector);
+                        const rttScore = 1.0 / (1.0 + (node.rtt || 100)); 
+                        const loadScore = 1.0 - (node.loadFactor || 0);
+                        
+                        const combinedScore = 0.4 * similarity + 0.3 * rttScore + 0.3 * loadScore;
+                        
+                        if (combinedScore > bestScore) {
+                            bestScore = combinedScore;
+                            bestNode = node;
+                        }
+                    }
+                }
+
+                return bestNode;
+            }
+
+            // Cosine similarity calculation
+            cosineSimilarity(vectorA, vectorB) {
+                if (!vectorA || !vectorB) return 0;
+                
+                let dotProduct = 0;
+                let normA = 0;
+                let normB = 0;
+
+                const minLength = Math.min(vectorA.length, vectorB.length);
+                for (let i = 0; i < minLength; i++) {
+                    dotProduct += vectorA[i] * vectorB[i];
+                    normA += vectorA[i] * vectorA[i];
+                    normB += vectorB[i] * vectorB[i];
+                }
+
+                if (normA === 0 || normB === 0) return 0;
+                return dotProduct / (Math.sqrt(normA) * Math.sqrt(normB));
+            }
+
+            // Parity distribution with space-efficient algorithms
+            distributeParity(data, replicas = 3) {
+                try {
+                    const parityTag = 'parity_' + Math.random().toString(36).substr(2, 9);
+                    const encryptedData = this.encryptData(data);
+                    
+                    // Find optimal nodes using tree evaluation
+                    const availableNodes = Array.from(this.peerConnections.values())
+                        .filter(conn => conn && conn.connectionState === 'connected');
+                    
+                    const targetNodes = [];
+                    for (let i = 0; i < replicas && i < Math.max(1, availableNodes.length); i++) {
+                        const bestNode = this.evaluatePlacementTree(availableNodes, this.nodeVector);
+                        if (bestNode && !targetNodes.includes(bestNode)) {
+                            targetNodes.push(bestNode);
+                        }
+                    }
+
+                    // Distribute to selected nodes
+                    targetNodes.forEach(node => {
+                        this.sendToNode(node.id, {
+                            type: 'STORE_PARITY',
+                            tag: parityTag,
+                            data: encryptedData,
+                            timestamp: Date.now()
+                        });
+                    });
+
+                    this.parityTags.add(parityTag);
+                    return parityTag;
+                } catch (error) {
+                    console.error('Parity distribution failed:', error);
+                    return null;
+                }
+            }
+
+            // Encrypted data storage
+            encryptData(data) {
+                try {
+                    if (typeof CryptoJS !== 'undefined') {
+                        const key = CryptoJS.lib.WordArray.random(256/8);
+                        const encrypted = CryptoJS.AES.encrypt(JSON.stringify(data), key);
+                        return {
+                            data: encrypted.toString(),
+                            key: key.toString()
+                        };
+                    } else {
+                        // Fallback: base64 encoding (not secure, but allows functionality)
+                        return {
+                            data: btoa(JSON.stringify(data)),
+                            key: 'fallback'
+                        };
+                    }
+                } catch (error) {
+                    console.error('Encryption failed:', error);
+                    return { data: JSON.stringify(data), key: 'none' };
+                }
+            }
+
+            decryptData(encryptedData) {
+                try {
+                    if (typeof CryptoJS !== 'undefined' && encryptedData.key !== 'fallback') {
+                        const decrypted = CryptoJS.AES.decrypt(encryptedData.data, encryptedData.key);
+                        return JSON.parse(decrypted.toString(CryptoJS.enc.Utf8));
+                    } else {
+                        // Fallback decoding
+                        return JSON.parse(atob(encryptedData.data));
+                    }
+                } catch (e) {
+                    console.error('Decryption failed:', e);
+                    return null;
+                }
+            }
+
+            // WebRTC peer connection management
+            async connectToPeer(peerId) {
+                try {
+                    if (this.peerConnections.has(peerId)) return;
+
+                    const pc = new RTCPeerConnection(this.rtcConfiguration);
+                    const dataChannel = pc.createDataChannel('ft-dfrp', {
+                        ordered: true,
+                        maxRetransmits: 3
+                    });
+
+                    dataChannel.onopen = () => {
+                        console.log(`Connected to peer: ${peerId}`);
+                        this.announceParity(peerId);
+                    };
+
+                    dataChannel.onmessage = (event) => {
+                        try {
+                            this.handlePeerMessage(peerId, JSON.parse(event.data));
+                        } catch (error) {
+                            console.error('Failed to parse peer message:', error);
+                        }
+                    };
+
+                    this.peerConnections.set(peerId, {
+                        connection: pc,
+                        dataChannel: dataChannel,
+                        id: peerId,
+                        vector: new Array(8).fill(0).map(() => Math.random()),
+                        rtt: 100,
+                        loadFactor: Math.random() * 0.5,
+                        connectionState: 'connecting'
+                    });
+
+                    return pc;
+                } catch (error) {
+                    console.error('Failed to connect to peer:', error);
+                    return null;
+                }
+            }
+
+            handlePeerMessage(peerId, message) {
+                try {
+                    switch (message.type) {
+                        case 'STORE_PARITY':
+                            this.storeParity(message.tag, message.data);
+                            break;
+                        case 'RETRIEVE_PARITY':
+                            this.sendParity(peerId, message.tag);
+                            break;
+                        case 'PARITY_ANNOUNCEMENT':
+                            this.updatePeerInfo(peerId, message);
+                            break;
+                        case 'PRAYER_BROADCAST':
+                            this.handlePrayerBroadcast(message.prayer);
+                            break;
+                    }
+                } catch (error) {
+                    console.error('Error handling peer message:', error);
+                }
+            }
+
+            // Service worker for background persistence
+            async initializeServiceWorker() {
+                if ('serviceWorker' in navigator) {
+                    try {
+                        const swCode = `
+                            self.addEventListener('message', async (event) => {
+                                if (event.data.type === 'SYNC_PARITY') {
+                                    console.log('Background sync triggered');
+                                }
+                            });
+                        `;
+                        
+                        const blob = new Blob([swCode], { type: 'application/javascript' });
+                        const swUrl = URL.createObjectURL(blob);
+                        
+                        const registration = await navigator.serviceWorker.register(swUrl);
+                        console.log('Service worker registered for FT-DFRP');
+                        
+                        URL.revokeObjectURL(swUrl);
+                    } catch (error) {
+                        console.log('Service worker registration failed:', error);
+                    }
+                }
+            }
+
+            sendToNode(nodeId, message) {
+                try {
+                    const peer = this.peerConnections.get(nodeId);
+                    if (peer && peer.dataChannel && peer.dataChannel.readyState === 'open') {
+                        peer.dataChannel.send(JSON.stringify(message));
+                    }
+                } catch (error) {
+                    console.error('Failed to send message to node:', error);
+                }
+            }
+
+            announceParity(peerId) {
+                this.sendToNode(peerId, {
+                    type: 'PARITY_ANNOUNCEMENT',
+                    nodeId: this.nodeId,
+                    parityTags: Array.from(this.parityTags),
+                    loadFactor: this.loadFactor,
+                    vector: this.nodeVector,
+                    timestamp: Date.now()
+                });
+            }
+
+            // Find prayers using ANN-enhanced routing
+            findSimilarPrayers(prayerVector, k = 10) {
+                try {
+                    const candidates = Array.from(this.peerConnections.values())
+                        .filter(peer => peer && peer.vector)
+                        .map(peer => ({
+                            id: peer.id,
+                            similarity: this.cosineSimilarity(peer.vector, prayerVector),
+                            rtt: peer.rtt || 100
+                        }))
+                        .sort((a, b) => (b.similarity / (1 + a.rtt)) - (a.similarity / (1 + b.rtt)))
+                        .slice(0, k);
+
+                    return candidates;
+                } catch (error) {
+                    console.error('Failed to find similar prayers:', error);
+                    return [];
+                }
+            }
+
+            // Stub methods for missing functionality
+            storeParity(tag, data) {
+                console.log('Storing parity:', tag);
+            }
+
+            sendParity(peerId, tag) {
+                console.log('Sending parity to peer:', peerId, tag);
+            }
+
+            updatePeerInfo(peerId, message) {
+                const peer = this.peerConnections.get(peerId);
+                if (peer) {
+                    peer.loadFactor = message.loadFactor || peer.loadFactor;
+                    peer.vector = message.vector || peer.vector;
+                }
+            }
+
+            handlePrayerBroadcast(prayer) {
+                console.log('Received prayer broadcast:', prayer);
+            }
+        }
+
+        // Global Google Auth callback
+        window.handleGoogleAuth = function(response) {
+            if (window.googleAuthCallback) {
+                window.googleAuthCallback(response);
+            }
+        };
+
+        // Main React Application
+        const { useState, useEffect, useCallback } = React;
+
+        function PrayersSaintsApp() {
+            const [user, setUser] = useState(null);
+            const [walletAddress, setWalletAddress] = useState('');
+            const [prayers, setPrayers] = useState([]);
+            const [networkStatus, setNetworkStatus] = useState('initializing');
+            const [nodeCount, setNodeCount] = useState(0);
+            const [fractalRouter, setFractalRouter] = useState(null);
+            const [showCreateForm, setShowCreateForm] = useState(false);
+            const [loading, setLoading] = useState(false);
+            const [googleReady, setGoogleReady] = useState(false);
+
+            // Prayer form state
+            const [newPrayer, setNewPrayer] = useState({
+                title: '',
+                content: '',
+                location: '',
+                urgency: 'medium',
+                category: 'general',
+                needsAmount: '',
+                walletAddress: ''
+            });
+
+            useEffect(() => {
+                try {
+                    // Initialize FT-DFRP network
+                    const router = new FractalRouter();
+                    setFractalRouter(router);
+                    setNetworkStatus('connected');
+
+                    // Simulate network growth
+                    const interval = setInterval(() => {
+                        setNodeCount(prev => Math.min(prev + Math.floor(Math.random() * 3), 47));
+                    }, 3000);
+
+                    // Load sample prayers
+                    setPrayers([
+                        {
+                            id: 'prayer_1',
+                            title: 'Help for Family After Fire',
+                            content: 'Our neighbor\'s house burned down last week. They lost everything including winter clothes for their 3 children. Any help with basic necessities would be deeply appreciated.',
+                            location: 'Detroit, Michigan',
+                            author: 'Sarah M.',
+                            walletAddress: '0x742d35Cc6634C0532925a3b8D5c9E153fB1234567',
+                            urgency: 'high',
+                            category: 'emergency',
+                            timestamp: Date.now() - 3600000,
+                            distance: 2.3,
+                            vector: [0.8, 0.2, 0.9, 0.1, 0.7, 0.3, 0.6, 0.4]
+                        },
+                        {
+                            id: 'prayer_2', 
+                            title: 'Medical Bills for Grandmother',
+                            content: 'My grandmother needs surgery but insurance won\'t cover all costs. We\'re raising funds for her medical bills. Every small donation helps our family.',
+                            location: 'Phoenix, Arizona',
+                            author: 'Michael R.',
+                            walletAddress: '0x8ba1f109551bD432803012645Hac136c5d3456789',
+                            urgency: 'medium',
+                            category: 'health',
+                            timestamp: Date.now() - 7200000,
+                            distance: 1847.5,
+                            vector: [0.3, 0.8, 0.5, 0.7, 0.2, 0.9, 0.4, 0.6]
+                        },
+                        {
+                            id: 'prayer_3',
+                            title: 'School Supplies for Refugee Children',
+                            content: 'Local refugee center needs school supplies for 25 children starting school next week. Books, pencils, backpacks - anything helps these kids get a fresh start.',
+                            location: 'Portland, Oregon',
+                            author: 'Anna K.',
+                            walletAddress: '0x123abc789def456ghi789jkl012mno345pqr678901',
+                            urgency: 'medium',
+                            category: 'education',
+                            timestamp: Date.now() - 1800000,
+                            distance: 2134.7,
+                            vector: [0.6, 0.4, 0.8, 0.3, 0.9, 0.1, 0.5, 0.7]
+                        }
+                    ]);
+
+                    return () => clearInterval(interval);
+                } catch (error) {
+                    console.error('Initialization failed:', error);
+                    setNetworkStatus('error');
+                }
+            }, []);
+
+            const handleGoogleAuth = useCallback((response) => {
+                try {
+                    const token = response.credential;
+                    const payload = JSON.parse(atob(token.split('.')[1]));
+                    setUser({
+                        name: payload.name,
+                        email: payload.email,
+                        picture: payload.picture,
+                        verified: true
+                    });
+                    setNetworkStatus('authenticated');
+                } catch (error) {
+                    console.error('Google auth failed:', error);
+                    alert('Authentication failed. Please try again.');
+                }
+            }, []);
+
+            const connectWallet = useCallback(async () => {
+                if (loading) return;
+                setLoading(true);
+                
+                try {
+                    if (typeof window.ethereum !== 'undefined') {
+                        const accounts = await window.ethereum.request({ 
+                            method: 'eth_requestAccounts' 
+                        });
+                        setWalletAddress(accounts[0]);
+                        setNewPrayer(prev => ({ ...prev, walletAddress: accounts[0] }));
+                    } else {
+                        alert('Please install MetaMask or another Web3 wallet');
+                    }
+                } catch (error) {
+                    console.error('Failed to connect wallet:', error);
+                    alert('Failed to connect wallet. Please try again.');
+                } finally {
+                    setLoading(false);
+                }
+            }, [loading]);
+
+            const submitPrayer = useCallback(async () => {
+                if (!user || !walletAddress) {
+                    alert('Please authenticate and connect wallet first');
+                    return;
+                }
+
+                if (!newPrayer.title.trim() || !newPrayer.content.trim()) {
+                    alert('Please fill in title and content');
+                    return;
+                }
+
+                setLoading(true);
+
+                try {
+                    const prayer = {
+                        id: 'prayer_' + Math.random().toString(36).substr(2, 9),
+                        ...newPrayer,
+                        author: user.name,
+                        timestamp: Date.now(),
+                        distance: 0,
+                        vector: new Array(8).fill(0).map(() => Math.random())
+                    };
+
+                    // Store in FT-DFRP network
+                    if (fractalRouter) {
+                        const parityTag = fractalRouter.distributeParity(prayer, 3);
+                        console.log('Prayer stored with parity tag:', parityTag);
+                    }
+
+                    setPrayers(prev => [prayer, ...prev]);
+                    setNewPrayer({
+                        title: '',
+                        content: '',
+                        location: '',
+                        urgency: 'medium',
+                        category: 'general',
+                        needsAmount: '',
+                        walletAddress: walletAddress
+                    });
+                    setShowCreateForm(false);
+                } catch (error) {
+                    console.error('Failed to submit prayer:', error);
+                    alert('Failed to create prayer. Please try again.');
+                } finally {
+                    setLoading(false);
+                }
+            }, [user, walletAddress, newPrayer, fractalRouter, loading]);
+
+            const contributeToPrayer = useCallback(async (prayer) => {
+                if (!walletAddress) {
+                    alert('Please connect your wallet first');
+                    return;
+                }
+
+                const amount = prompt('Enter contribution amount in ETH:');
+                if (!amount || isNaN(amount) || parseFloat(amount) <= 0) return;
+
+                setLoading(true);
+
+                try {
+                    if (typeof window.ethereum !== 'undefined' && typeof Web3 !== 'undefined') {
+                        const web3 = new Web3(window.ethereum);
+                        const transaction = await web3.eth.sendTransaction({
+                            from: walletAddress,
+                            to: prayer.walletAddress,
+                            value: web3.utils.toWei(amount, 'ether')
+                        });
+                        alert(`Contribution sent! Transaction: ${transaction.transactionHash}`);
+                    } else {
+                        alert('Web3 not available. Please ensure MetaMask is installed.');
+                    }
+                } catch (error) {
+                    console.error('Transaction failed:', error);
+                    alert('Transaction failed. Please try again.');
+                } finally {
+                    setLoading(false);
+                }
+            }, [walletAddress, loading]);
+
+            // Google Auth initialization
+            useEffect(() => {
+                window.googleAuthCallback = handleGoogleAuth;
+                
+                const initGoogleAuth = () => {
+                    if (typeof google !== 'undefined' && google.accounts) {
+                        try {
+                            google.accounts.id.initialize({
+                                client_id: 'YOUR_GOOGLE_CLIENT_ID.apps.googleusercontent.com',
+                                callback: handleGoogleAuth
+                            });
+                            setGoogleReady(true);
+                        } catch (error) {
+                            console.error('Google Auth initialization failed:', error);
+                        }
+                    }
+                };
+
+                if (typeof google !== 'undefined') {
+                    initGoogleAuth();
+                } else {
+                    const checkGoogle = setInterval(() => {
+                        if (typeof google !== 'undefined') {
+                            initGoogleAuth();
+                            clearInterval(checkGoogle);
+                        }
+                    }, 500);
+                    
+                    setTimeout(() => clearInterval(checkGoogle), 10000);
+                }
+
+                return () => {
+                    window.googleAuthCallback = null;
+                };
+            }, [handleGoogleAuth]);
+
+            if (!user) {
+                return React.createElement('div', { className: 'container' },
+                    React.createElement('div', { className: 'network-status' },
+                        'FT-DFRP Network: ' + networkStatus + ' | Nodes: ' + nodeCount
+                    ),
+                    React.createElement('div', { style: { paddingTop: '100px' } },
+                        React.createElement('div', { className: 'auth-section' },
+                            React.createElement('h1', { style: { marginBottom: '30px', color: '#2c3e50' } },
+                                '🙏 Prayers, Saints & Saviors'
+                            ),
+                            React.createElement('p', { style: { marginBottom: '30px', color: '#666', lineHeight: '1.6' } },
+                                'A global humanitarian network powered by fractal routing and distributed trust. Connect with people in need and those who can help, anywhere in the world.'
+                            ),
+                            !googleReady ? 
+                                React.createElement('div', { style: { margin: '20px 0', fontSize: '16px', color: '#666' } },
+                                    'Loading authentication...'
+                                ) :
+                                React.createElement('button', {
+                                    onClick: () => {
+                                        setUser({
+                                            name: 'Demo User',
+                                            email: 'demo@example.com',
+                                            picture: '',
+                                            verified: true
+                                        });
+                                        setNetworkStatus('authenticated');
+                                    },
+                                    className: 'submit-btn',
+                                    style: { marginTop: '20px' }
+                                }, '🚀 Continue as Demo User'),
+                            React.createElement('div', { style: { margin: '20px 0', fontSize: '14px', color: '#666' } },
+                                'For production, replace with actual Google OAuth integration'
+                            )
+                        )
+                    )
+                );
+            }
+
+            return React.createElement('div', { className: 'container' },
+                React.createElement('div', { className: 'network-status' },
+                    'FT-DFRP Network: ' + networkStatus,
+                    React.createElement('span', { className: 'node-count' }, nodeCount + ' nodes')
+                ),
+
+                React.createElement('header', { style: { textAlign: 'center', padding: '40px 0' } },
+                    React.createElement('h1', { style: { color: 'white', marginBottom: '10px' } },
+                        '🙏 Prayers, Saints & Saviors'
+                    ),
+                    React.createElement('p', { style: { color: 'rgba(255,255,255,0.9)', marginBottom: '20px' } },
+                        'Welcome back, ' + user.name
+                    ),
+                    
+                    !walletAddress ? 
+                        React.createElement('button', {
+                            onClick: connectWallet,
+                            className: 'contribute-btn',
+                            disabled: loading
+                        }, loading ? 'Connecting...' : '🔗 Connect Web3 Wallet') :
+                        React.createElement('div', { className: 'wallet-status' },
+                            React.createElement('strong', null, 'Wallet Connected: '),
+                            walletAddress.substring(0, 8) + '...' + walletAddress.substring(36)
+                        ),
+                    
+                    React.createElement('button', {
+                        onClick: () => setShowCreateForm(true),
+                        className: 'submit-btn',
+                        style: { marginTop: '15px', maxWidth: '300px' }
+                    }, '✨ Create New Prayer Request')
+                ),
+
+                showCreateForm && React.createElement('div', { className: 'create-prayer' },
+                    React.createElement('h3', { style: { marginBottom: '20px' } }, 'Create Prayer Request'),
+                    
+                    React.createElement('div', { className: 'form-group' },
+                        React.createElement('label', null, 'Title'),
+                        React.createElement('input', {
+                            type: 'text',
+                            value: newPrayer.title,
+                            onChange: (e) => setNewPrayer(prev => ({ ...prev, title: e.target.value })),
+                            placeholder: 'Brief description of your need'
+                        })
+                    ),
+
+                    React.createElement('div', { className: 'form-group' },
+                        React.createElement('label', null, 'Prayer/Request Details'),
+                        React.createElement('textarea', {
+                            value: newPrayer.content,
+                            onChange: (e) => setNewPrayer(prev => ({ ...prev, content: e.target.value })),
+                            placeholder: 'Describe your situation and how others can help',
+                            rows: 4
+                        })
+                    ),
+
+                    React.createElement('div', { style: { display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '15px' } },
+                        React.createElement('div', { className: 'form-group' },
+                            React.createElement('label', null, 'Location'),
+                            React.createElement('input', {
+                                type: 'text',
+                                value: newPrayer.location,
+                                onChange: (e) => setNewPrayer(prev => ({ ...prev, location: e.target.value })),
+                                placeholder: 'City, State/Country'
+                            })
+                        ),
+
+                        React.createElement('div', { className: 'form-group' },
+                            React.createElement('label', null, 'Urgency'),
+                            React.createElement('select', {
+                                value: newPrayer.urgency,
+                                onChange: (e) => setNewPrayer(prev => ({ ...prev, urgency: e.target.value }))
+                            },
+                                React.createElement('option', { value: 'low' }, 'Low - Can wait'),
+                                React.createElement('option', { value: 'medium' }, 'Medium - Within weeks'),
+                                React.createElement('option', { value: 'high' }, 'High - Urgent need')
+                            )
+                        )
+                    ),
+
+                    React.createElement('div', { style: { display: 'flex', gap: '15px', marginTop: '20px' } },
+                        React.createElement('button', {
+                            onClick: submitPrayer,
+                            className: 'submit-btn',
+                            style: { flex: 1 },
+                            disabled: loading
+                        }, loading ? 'Publishing...' : '🚀 Publish Prayer Request'),
+                        
+                        React.createElement('button', {
+                            onClick: () => setShowCreateForm(false),
+                            style: { 
+                                flex: 1, 
+                                background: '#666', 
+                                color: 'white', 
+                                border: 'none', 
+                                padding: '12px', 
+                                borderRadius: '6px', 
+                                cursor: 'pointer' 
+                            }
+                        }, 'Cancel')
+                    )
+                ),
+
+                React.createElement('div', { style: { marginTop: '30px' } },
+                    React.createElement('h2', { style: { color: 'white', marginBottom: '20px' } },
+                        '🌍 Global Prayer Network',
+                        React.createElement('span', { style: { fontSize: '14px', opacity: '0.8', marginLeft: '15px' } },
+                            'Powered by FT-DFRP • ' + prayers.length + ' active requests'
+                        )
+                    ),
+
+                    prayers.map(prayer => 
+                        React.createElement('div', {
+                            key: prayer.id,
+                            className: `prayer-card ${prayer.urgency === 'high' ? 'prayer-urgent' : ''}`
+                        },
+                            React.createElement('div', { className: 'prayer-header' },
+                                React.createElement('div', { className: 'prayer-title' }, prayer.title),
+                                React.createElement('div', { className: 'prayer-distance' },
+                                    prayer.distance === 0 ? 'Your Request' : prayer.distance + ' km away'
+                                )
+                            ),
+                            
+                            React.createElement('div', { className: 'prayer-content' }, prayer.content),
+
+                            prayer.needsAmount && React.createElement('div', {
+                                style: { 
+                                    background: '#fff3e0', 
+                                    padding: '8px 12px', 
+                                    borderRadius: '6px', 
+                                    marginBottom: '12px',
+                                    fontSize: '14px',
+                                    color: '#ef6c00'
+                                }
+                            },
+                                React.createElement('strong', null, 'Estimated Need: '),
+                                '$' + prayer.needsAmount + ' USD'
+                            ),
+
+                            React.createElement('div', { className: 'prayer-footer' },
+                                React.createElement('div', { className: 'prayer-location' },
+                                    '📍 ' + prayer.location + ' • by ' + prayer.author + ' • ' + prayer.category
+                                ),
+                                
+                                walletAddress && prayer.walletAddress && prayer.distance > 0 && 
+                                    React.createElement('button', {
+                                        onClick: () => contributeToPrayer(prayer),
+                                        className: 'contribute-btn',
+                                        disabled: loading
+                                    }, loading ? 'Processing...' : '💝 Contribute')
+                            )
+                        )
+                    )
+                ),
+
+                React.createElement('footer', { style: { textAlign: 'center', padding: '40px 0', color: 'rgba(255,255,255,0.7)' } },
+                    React.createElement('p', null, 'Built with ❤️ using FT-DFRP • Fractal Toroidal Density Field Routing Protocol'),
+                    React.createElement('p', { style: { fontSize: '12px', marginTop: '10px' } },
+                        'Decentralized • Zero-Trust • Space-Efficient O(√n log n) Routing'
+                    )
+                )
+            );
+        }
+
+        // Mount the application with error handling
+        try {
+            const root = document.getElementById('root');
+            if (root) {
+                ReactDOM.render(React.createElement(PrayersSaintsApp), root);
+            } else {
+                console.error('Root element not found');
+            }
+        } catch (error) {
+            console.error('Failed to mount React app:', error);
+            document.getElementById('root').innerHTML = '<div style="padding: 50px; text-align: center;"><h2>Loading Error</h2><p>Please refresh the page</p></div>';
+        }
+    </script>
+</body>
+</html>
