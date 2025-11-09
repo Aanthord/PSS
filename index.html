@@ -1134,22 +1134,137 @@
                 }
                 return false;
             }
-// PSS Enhanced Network Service Worker
-// Persistent P2P Node for Prayers, Saints & Saviors
-// Version 2.1 with IndexedDB and cross-tab sync
-const CACHE_NAME = 'prayers-network-v2';
-const DB_NAME = 'PrayersNetworkDB';
-const STORES = ['peers', 'prayers', 'parity', 'announcements'];
-let db;
-let peers = new Map();
-let announcements = new Map();
-let isOnline = false;
-let startTime = Date.now();
 
-// Initialize IndexedDB for persistent storage
-async function initDB() {
-    return new Promise((resolve, reject) => {
-        const request = indexedDB.open(DB_NAME, 2);
+            handleServiceWorkerPeerDiscovery(peerAnnouncement) {
+                if (peerAnnouncement.nodeId !== this.nodeId && 
+                    !this.connections.has(peerAnnouncement.nodeId) &&
+                    this.connections.size < this.networkConfig.maxConnections) {
+                    
+                    this.debug(`👀 SW discovered peer: ${peerAnnouncement.nodeId.substr(0, 12)}...`, 'info');
+                    setTimeout(() => {
+                        this.connectToPeer(peerAnnouncement.nodeId);
+                    }, Math.random() * 2000); // Random delay to prevent thundering herd
+                }
+            }
+            
+            setupPeerEvents() {
+                this.peer.on('open', (id) => {
+                    this.debug(`🆔 Enhanced Node Online: ${id}`, 'success');
+                    this.nodeId = id;
+                    this.announceToNetwork();
+                    this.updateRoutingTable();
+                });
+                
+                this.peer.on('connection', (conn) => {
+                    this.debug(`📞 Incoming connection: ${conn.peer}`, 'info');
+                    this.handleNewConnection(conn);
+                });
+                
+                this.peer.on('error', (error) => {
+                    this.debug(`❌ Peer error: ${error.type} - ${error.message}`, 'error');
+                    this.handlePeerError(error);
+                });
+
+                this.peer.on('disconnected', () => {
+                    this.debug('🔄 Peer disconnected, attempting reconnection...', 'info');
+                    setTimeout(() => {
+                        if (!this.peer.destroyed) {
+                            this.peer.reconnect();
+                        }
+                    }, 3000);
+                });
+            }
+
+            handlePeerError(error) {
+let db;
+
+            handlePeerError(error) {
+                if (error.type === 'network') {
+                    this.debug('🌐 Network error - checking connectivity...', 'info');
+                } else if (error.type === 'peer-unavailable') {
+                    this.debug('👻 Peer unavailable - cleaning up...', 'info');
+                    // Remove from discovered peers
+                    this.discoveredPeers.delete(error.peer);
+                }
+            }
+            
+            handleNewConnection(conn) {
+                if (this.connections.size >= this.networkConfig.maxConnections) {
+                    this.debug('🚫 Max connections reached, rejecting...', 'info');
+                    conn.close();
+                    return;
+                }
+
+                const connectionTimeout = setTimeout(() => {
+                    this.debug(`⏰ Connection timeout: ${conn.peer}`, 'error');
+                    conn.close();
+                }, this.networkConfig.connectionTimeout);
+
+                conn.on('open', () => {
+                    clearTimeout(connectionTimeout);
+                    this.debug(`✅ Enhanced connection established: ${conn.peer}`, 'success');
+                    this.connections.set(conn.peer, {
+                        connection: conn,
+                        lastSeen: Date.now(),
+                        messagesReceived: 0,
+                        messagesSent: 0,
+                        quality: 1.0
+                    });
+                    this.sendAdvancedHandshake(conn);
+                    this.updateRoutingTable();
+                    this.emit('peerConnected', { peerId: conn.peer });
+                });
+                
+                conn.on('data', (data) => {
+                    const peerInfo = this.connections.get(conn.peer);
+                    if (peerInfo) {
+                        peerInfo.lastSeen = Date.now();
+                        peerInfo.messagesReceived++;
+                    }
+                    this.handlePeerMessage(conn.peer, data);
+                });
+                
+                conn.on('close', () => {
+                    this.debug(`🔌 Enhanced connection closed: ${conn.peer}`, 'info');
+                    this.connections.delete(conn.peer);
+                    this.updateRoutingTable();
+                    this.emit('peerDisconnected', { peerId: conn.peer });
+                });
+
+                conn.on('error', (error) => {
+                    this.debug(`❌ Connection error: ${conn.peer} - ${error}`, 'error');
+                    this.connections.delete(conn.peer);
+                });
+            }
+            
+            sendAdvancedHandshake(conn) {
+                const handshake = {
+                    type: 'ENHANCED_HANDSHAKE',
+                    nodeId: this.nodeId,
+                    vector: this.vector,
+                    timestamp: Date.now(),
+                    features: ['enhanced-routing', 'mesh-topology', 'service-worker', 'humanitarian-optimization'],
+                    version: '2.1',
+                    capabilities: {
+                        maxConnections: this.networkConfig.maxConnections,
+                        algorithms: ['enhanced-routing', 'secure-hash'],
+                        protocols: ['WebRTC', 'humanitarian-mesh', 'broadcast-channel'],
+                        serviceWorker: this.serviceWorkerReady
+                    }
+                };
+                
+                try {
+                    conn.send(handshake);
+                    const peerInfo = this.connections.get(conn.peer);
+                    if (peerInfo) {
+                        peerInfo.messagesSent++;
+                    }
+                } catch (error) {
+                    this.debug(`❌ Failed to send handshake: ${error.message}`, 'error');
+                }
+            }
+            
+            handlePeerMessage(peerId, data) {
         request.onerror = () => reject(request.error);
         request.onsuccess = () => {
             db = request.result;
