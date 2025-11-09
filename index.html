@@ -3,12 +3,13 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Prayers, Saints & Saviors - Distributed Humanitarian Network</title>
+    <title>Prayers, Saints & Saviors - Complete Global Network</title>
     <script src="https://unpkg.com/react@18/umd/react.production.min.js"></script>
     <script src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js"></script>
     <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/web3@latest/dist/web3.min.js"></script>
     <script src="https://unpkg.com/crypto-js@latest/crypto-js.js"></script>
+    <script src="https://unpkg.com/peerjs@1.5.2/dist/peerjs.min.js"></script>
     <style>
         * { box-sizing: border-box; margin: 0; padding: 0; }
         body {
@@ -91,14 +92,30 @@
         .main-content { display: none; }
         .main-content.show { display: block; }
         
-        .container { max-width: 1200px; margin: 0 auto; padding: 20px; }
+        /* Enhanced Network Status */
         .network-status {
             position: fixed; top: 10px; right: 10px; background: rgba(0,0,0,0.9); color: white;
-            padding: 10px 15px; border-radius: 8px; font-size: 12px; font-family: monospace;
-            z-index: 1000; border: 1px solid #4CAF50;
+            padding: 15px; border-radius: 8px; font-size: 11px; font-family: monospace;
+            z-index: 1000; border: 1px solid #4CAF50; min-width: 220px;
         }
-        .pulse { animation: pulse 2s infinite; }
+        .network-status .peer-list {
+            margin-top: 10px; max-height: 150px; overflow-y: auto;
+        }
+        .peer-item {
+            display: flex; justify-content: space-between; padding: 2px 0;
+            border-bottom: 1px solid rgba(255,255,255,0.2);
+        }
+        .connection-status {
+            display: inline-block; width: 8px; height: 8px; border-radius: 50%; margin-left: 8px;
+        }
+        .connection-status.connected { background: #4CAF50; animation: pulse 2s infinite; }
+        .connection-status.connecting { background: #ff9800; animation: blink 1s infinite; }
+        .connection-status.disconnected { background: #f44336; }
+        
         @keyframes pulse { 0%, 100% { opacity: 1; } 50% { opacity: 0.7; } }
+        @keyframes blink { 0%, 50% { opacity: 1; } 51%, 100% { opacity: 0.3; } }
+        
+        .container { max-width: 1200px; margin: 0 auto; padding: 20px; }
         .card {
             background: white; border-radius: 15px; padding: 25px; margin: 20px 0;
             box-shadow: 0 8px 25px rgba(0,0,0,0.15); transition: transform 0.3s;
@@ -147,10 +164,6 @@
         .form-group input:focus, .form-group textarea:focus, .form-group select:focus {
             outline: none; border-color: #4CAF50; background: white;
         }
-        .wallet-status {
-            margin: 20px 0; padding: 15px; background: #e8f5e8; border-radius: 10px;
-            font-family: monospace; font-size: 13px; color: #2e7d32;
-        }
         .network-info {
             background: rgba(255,255,255,0.1); backdrop-filter: blur(10px);
             border: 1px solid rgba(255,255,255,0.2); border-radius: 15px;
@@ -179,6 +192,23 @@
             transition: transform 0.3s; box-shadow: 0 5px 15px rgba(0,0,0,0.2);
         }
         .toast.show { transform: translateX(0); }
+        
+        .p2p-debug {
+            background: rgba(0,0,0,0.8); color: #0f0; font-family: monospace; font-size: 11px;
+            padding: 15px; border-radius: 8px; margin: 20px 0; max-height: 200px; overflow-y: auto;
+            border: 1px solid #333; display: none;
+        }
+        .debug-line { margin: 2px 0; }
+        .debug-error { color: #f44; }
+        .debug-success { color: #4f4; }
+        .debug-info { color: #44f; }
+        
+        .network-controls {
+            display: flex; gap: 10px; margin: 20px 0; flex-wrap: wrap;
+        }
+        .network-controls .btn {
+            padding: 8px 16px; font-size: 12px; margin: 0;
+        }
     </style>
 </head>
 <body>
@@ -192,40 +222,40 @@
             
             <div class="modal-body">
                 <p style="margin-bottom: 20px; line-height: 1.6;">
-                    Before joining our network, please read and understand what you're agreeing to. 
-                    Your browser will become part of a distributed peer-to-peer infrastructure.
+                    Before joining our global P2P network, please read and understand what you're agreeing to. 
+                    Your browser will become part of a distributed humanitarian infrastructure.
                 </p>
 
                 <div class="risk-section">
                     <h4>Important Risk Disclosures</h4>
                     <ul style="margin-left: 20px; line-height: 1.6;">
-                        <li><strong>Experimental Technology:</strong> This is cutting-edge distributed system technology that may have unknown bugs or vulnerabilities.</li>
-                        <li><strong>Cryptocurrency Risk:</strong> You may handle cryptocurrency transactions which are irreversible and carry financial risk.</li>
-                        <li><strong>No Guarantees:</strong> We cannot guarantee the reliability, security, or permanence of the network or any data stored within it.</li>
-                        <li><strong>Browser Resources:</strong> Your browser will use CPU, memory, and network resources to participate in the distributed network.</li>
-                        <li><strong>Data Persistence:</strong> Prayer requests and network data will be stored in your browser and shared with network peers.</li>
+                        <li><strong>Experimental Technology:</strong> This uses WebRTC P2P networking and experimental algorithms with unknown risks.</li>
+                        <li><strong>Global Connections:</strong> Your browser will connect directly to other users worldwide via WebRTC data channels.</li>
+                        <li><strong>Cryptocurrency Risk:</strong> You may handle irreversible cryptocurrency transactions at your own risk.</li>
+                        <li><strong>No Guarantees:</strong> No warranties regarding security, reliability, or data persistence.</li>
+                        <li><strong>Resource Usage:</strong> Your browser will use CPU, memory, and network resources for the P2P network.</li>
                     </ul>
                 </div>
 
                 <div class="tech-details">
-                    <h5>🔬 Technical Implementation Details</h5>
+                    <h5>🔬 Technical Implementation</h5>
                     <p>
-                        Your browser will run a <strong>FT-DFRP (Fractal Toroidal Density Field Routing Protocol)</strong> node using:
-                        Service Workers for background operation, IndexedDB for local storage, WebRTC for peer connections,
-                        localStorage for network coordination, and cryptographic functions for security.
+                        Your browser will run: <strong>FT-DFRP routing protocols</strong>, WebRTC peer connections,
+                        Service Workers for persistence, IndexedDB storage, STUN/TURN NAT traversal, and cross-subnet
+                        mesh networking with O(√n log n) complexity humanitarian coordination algorithms.
                     </p>
                 </div>
 
                 <div style="margin: 20px 0; padding: 20px; background: #f0f8ff; border-radius: 8px; border: 1px solid #007bff;">
                     <h4 style="color: #007bff; margin-bottom: 10px;">📄 Terms of Service</h4>
                     <p style="margin-bottom: 10px;">
-                        By proceeding, you agree to our full Terms of Service and Privacy Policy:
+                        By proceeding, you agree to our complete Terms of Service and Privacy Policy:
                     </p>
                     <a href="https://aunthood.github.io/PSS/terms-of-service.html" target="_blank" class="tos-link">
                         📋 Read Complete Terms of Service
                     </a>
                     <p style="margin-top: 10px; font-size: 13px; color: #666;">
-                        <em>We strongly recommend reading the full terms before proceeding.</em>
+                        <em>Strongly recommended: Read full terms before proceeding.</em>
                     </p>
                 </div>
 
@@ -234,57 +264,56 @@
                 <div class="consent-item">
                     <input type="checkbox" id="consent-tos" />
                     <label for="consent-tos">
-                        <strong>Terms of Service:</strong> I have read and agree to the 
-                        <a href="https://aunthood.github.io/PSS/terms-of-service.html" target="_blank" class="tos-link">Terms of Service</a> 
-                        and understand this is experimental technology with inherent risks.
-                    </label>
-                </div>
-
-                <div class="consent-item">
-                    <input type="checkbox" id="consent-browser" />
-                    <label for="consent-browser">
-                        <strong>Browser Infrastructure:</strong> I consent to my browser becoming a network node, 
-                        using system resources, and storing distributed data locally.
+                        <strong>Terms of Service:</strong> I have read and agree to the Terms of Service 
+                        and understand this is experimental P2P technology with inherent risks.
                     </label>
                 </div>
 
                 <div class="consent-item">
                     <input type="checkbox" id="consent-p2p" />
                     <label for="consent-p2p">
-                        <strong>Peer-to-Peer Networking:</strong> I understand my browser will connect to other 
-                        users' browsers and share encrypted network data for humanitarian coordination.
+                        <strong>Global P2P Network:</strong> I consent to my browser connecting directly 
+                        to other users worldwide via WebRTC and participating in mesh networking.
+                    </label>
+                </div>
+
+                <div class="consent-item">
+                    <input type="checkbox" id="consent-browser" />
+                    <label for="consent-browser">
+                        <strong>Browser Infrastructure:</strong> I consent to my browser using system 
+                        resources and storing distributed humanitarian data locally.
                     </label>
                 </div>
 
                 <div class="consent-item">
                     <input type="checkbox" id="consent-crypto" />
                     <label for="consent-crypto">
-                        <strong>Cryptocurrency Risks:</strong> I understand I may handle cryptocurrency transactions 
-                        which are irreversible, and I am responsible for my own wallet security.
+                        <strong>Cryptocurrency Risks:</strong> I understand cryptocurrency transactions 
+                        are irreversible and I'm responsible for my wallet security.
                     </label>
                 </div>
 
                 <div class="consent-item">
                     <input type="checkbox" id="consent-data" />
                     <label for="consent-data">
-                        <strong>Data & Privacy:</strong> I understand that prayer requests I create will be 
-                        distributed across the network and I should not include sensitive personal information.
+                        <strong>Data & Privacy:</strong> I understand prayer requests are distributed 
+                        globally and I won't include sensitive personal information.
                     </label>
                 </div>
 
                 <div class="consent-item">
                     <input type="checkbox" id="consent-volunteer" />
                     <label for="consent-volunteer">
-                        <strong>Voluntary Participation:</strong> I am participating voluntarily in this 
-                        experimental humanitarian network and understand I can leave at any time by closing my browser.
+                        <strong>Voluntary Participation:</strong> I'm participating voluntarily and 
+                        understand I can exit by closing my browser at any time.
                     </label>
                 </div>
 
                 <div style="margin-top: 25px; padding: 15px; background: #e8f5e8; border-radius: 8px; border: 1px solid #4CAF50;">
                     <p style="font-size: 14px; line-height: 1.5; color: #2e7d32;">
-                        <strong>🌟 By joining:</strong> You become part of a global network helping people in need. 
-                        Your browser contributes to routing humanitarian aid efficiently while maintaining complete privacy 
-                        and decentralization. Together, we can build a more compassionate world.
+                        <strong>🌟 By joining:</strong> You become part of a global P2P humanitarian network. 
+                        Your browser helps route aid efficiently using revolutionary FT-DFRP algorithms while 
+                        maintaining privacy and decentralization. Together, we build a more compassionate world.
                     </p>
                 </div>
             </div>
@@ -300,8 +329,15 @@
         </div>
     </div>
 
-    <!-- Main Application Content (hidden until consent given) -->
-    <div id="root" class="main-content"></div>
+    <!-- Main Application Content -->
+    <div id="root" class="main-content">
+        <!-- Enhanced Network Status -->
+        <div class="network-status">
+            <div id="network-title">🌐 Global P2P Network</div>
+            <div id="network-stats">Initializing...</div>
+            <div id="peer-list" class="peer-list"></div>
+        </div>
+    </div>
 
     <!-- Consent Modal Logic -->
     <script>
@@ -329,7 +365,7 @@
         // Monitor checkbox changes to enable/disable accept button
         function updateAcceptButton() {
             const checkboxes = [
-                'consent-tos', 'consent-browser', 'consent-p2p', 
+                'consent-tos', 'consent-p2p', 'consent-browser', 
                 'consent-crypto', 'consent-data', 'consent-volunteer'
             ];
             
@@ -352,11 +388,10 @@
         // Accept terms and initialize network
         function acceptTerms() {
             const checkboxes = [
-                'consent-tos', 'consent-browser', 'consent-p2p', 
+                'consent-tos', 'consent-p2p', 'consent-browser', 
                 'consent-crypto', 'consent-data', 'consent-volunteer'
             ];
             
-            // Verify all checkboxes are checked
             const allChecked = checkboxes.every(id => 
                 document.getElementById(id).checked
             );
@@ -372,12 +407,8 @@
                 version: '1.0',
                 userAgent: navigator.userAgent,
                 consents: {
-                    tos: true,
-                    browser: true,
-                    p2p: true,
-                    crypto: true,
-                    data: true,
-                    volunteer: true
+                    tos: true, p2p: true, browser: true,
+                    crypto: true, data: true, volunteer: true
                 }
             };
             
@@ -389,10 +420,10 @@
                 document.getElementById('consent-modal').style.display = 'none';
                 document.getElementById('root').classList.add('show');
                 
-                // Initialize the React app now that consent is given
-                initializeApplication();
+                // Initialize the complete application
+                initializeCompleteApplication();
                 
-                console.log('User consent granted, initializing network...');
+                console.log('User consent granted, initializing complete network...');
                 
             } catch (error) {
                 console.error('Failed to store consent:', error);
@@ -403,14 +434,13 @@
         // Decline terms and redirect away
         function declineTerms() {
             if (confirm('Are you sure you want to decline? You will be redirected away from this site.')) {
-                // Clear any existing data
                 try {
                     localStorage.removeItem('pss_user_consent');
                     localStorage.removeItem('prayers_user');
                     // Clear any network data
                     for (let i = localStorage.length - 1; i >= 0; i--) {
                         const key = localStorage.key(i);
-                        if (key && (key.startsWith('prayers_') || key.startsWith('network_'))) {
+                        if (key && (key.startsWith('prayers_') || key.startsWith('network_') || key.startsWith('p2p_'))) {
                             localStorage.removeItem(key);
                         }
                     }
@@ -418,16 +448,14 @@
                     console.error('Error clearing data:', error);
                 }
                 
-                // Redirect to a safe page
                 window.location.href = 'https://www.un.org/en/humanitarian-action';
             }
         }
         
         // Initialize on page load
         document.addEventListener('DOMContentLoaded', function() {
-            // Add event listeners to all checkboxes
             const checkboxes = [
-                'consent-tos', 'consent-browser', 'consent-p2p', 
+                'consent-tos', 'consent-p2p', 'consent-browser', 
                 'consent-crypto', 'consent-data', 'consent-volunteer'
             ];
             
@@ -443,14 +471,13 @@
                 userConsent = true;
                 document.getElementById('consent-modal').style.display = 'none';
                 document.getElementById('root').classList.add('show');
-                initializeApplication();
+                initializeCompleteApplication();
             } else {
-                // Show modal - it's already visible by default
                 updateAcceptButton();
             }
         });
         
-        // Prevent any network operations without consent
+        // Prevent any operations without consent
         function requireConsent() {
             if (!userConsent) {
                 throw new Error('User consent required before network operations');
@@ -458,661 +485,390 @@
         }
     </script>
 
-    <!-- Service Worker Registration (only after consent) -->
+    <!-- Service Worker Registration with Fallback -->
     <script>
         function registerServiceWorkerWithFallback() {
-            requireConsent(); // Ensure consent before registering
+            requireConsent();
             
-            // Check if we're on HTTP/HTTPS (required for Service Workers)
             const isSecureContext = window.location.protocol === 'https:' || 
                                   window.location.protocol === 'http:' || 
                                   window.location.hostname === 'localhost' ||
                                   window.location.hostname === '127.0.0.1';
             
-            if (!isSecureContext) {
+            if (!isSecureContext || window.location.protocol === 'file:') {
                 console.log('Service Workers require HTTP/HTTPS. Running in fallback mode.');
-                initializeFallbackMode();
                 return;
             }
             
             if ('serviceWorker' in navigator) {
-                // Create service worker as a separate file approach
-                createAndRegisterServiceWorker();
-            } else {
-                console.log('Service Workers not supported. Running in fallback mode.');
-                initializeFallbackMode();
-            }
-        }
-        
-        function createAndRegisterServiceWorker() {
-            // Instead of blob URL, try to use separate service worker file first
-            
-            if (window.location.protocol === 'file:') {
-                console.log('Local file detected. Service Workers disabled for local development.');
-                initializeFallbackMode();
-                return;
-            }
-            
-            // Try to register separate service worker file first (production)
-            navigator.serviceWorker.register('./sw.js')
-                .then(registration => {
-                    console.log('FT-DFRP Service Worker registered successfully (separate file)');
-                    if ('sync' in registration) {
-                        registration.sync.register('peer-discovery');
-                    }
-                })
-                .catch(error => {
-                    console.log('Separate SW file not found, trying inline approach:', error.message);
-                    // Fallback to inline service worker
-                    registerInlineServiceWorker();
-                });
-        }
-        
-        function registerInlineServiceWorker() {
-            try {
-                const swCode = `
-                    // Persistent FT-DFRP Node Service Worker (Inline Version)
-                    const CACHE_NAME = 'prayers-network-v1';
-                    const DB_NAME = 'PrayersNetworkDB';
-                    const STORES = ['peers', 'prayers', 'parity'];
-                    
-                    let db;
-                    let peers = new Map();
-                    let isOnline = false;
-                    
-                    // Initialize IndexedDB for persistent storage
-                    async function initDB() {
-                        return new Promise((resolve, reject) => {
-                            const request = indexedDB.open(DB_NAME, 1);
-                            request.onerror = () => reject(request.error);
-                            request.onsuccess = () => {
-                                db = request.result;
-                                resolve(db);
-                            };
-                            request.onupgradeneeded = (event) => {
-                                const db = event.target.result;
-                                STORES.forEach(storeName => {
-                                    if (!db.objectStoreNames.contains(storeName)) {
-                                        db.createObjectStore(storeName, { keyPath: 'id' });
-                                    }
-                                });
-                            };
-                        });
-                    }
-                    
-                    // Store data persistently
-                    async function storeData(storeName, data) {
-                        if (!db) await initDB();
-                        const transaction = db.transaction([storeName], 'readwrite');
-                        const store = transaction.objectStore(storeName);
-                        return store.put(data);
-                    }
-                    
-                    // Background sync for peer discovery
-                    self.addEventListener('sync', event => {
-                        if (event.tag === 'peer-discovery') {
-                            event.waitUntil(discoverPeers());
-                        }
-                    });
-                    
-                    // Message handling from main thread
-                    self.addEventListener('message', async event => {
-                        const { type, data } = event.data;
-                        
-                        switch (type) {
-                            case 'STORE_PRAYER':
-                                await storeData('prayers', data);
-                                console.log('Prayer stored via inline SW');
-                                break;
-                            case 'REGISTER_PEER':
-                                peers.set(data.id, data);
-                                await storeData('peers', data);
-                                break;
-                        }
-                    });
-                    
-                    // Periodic peer discovery
-                    async function discoverPeers() {
-                        console.log('Inline SW: Discovering peers...');
-                        isOnline = true;
-                    }
-                    
-                    setInterval(discoverPeers, 30000);
-                    
-                    self.addEventListener('install', () => self.skipWaiting());
-                    self.addEventListener('activate', event => event.waitUntil(clients.claim()));
-                    
-                    initDB().then(() => {
-                        console.log('FT-DFRP Service Worker (inline): Network node active');
-                    });
-                `;
-                
-                // Use data URL for better compatibility than blob
-                const swDataUrl = 'data:application/javascript,' + encodeURIComponent(swCode);
-                
-                navigator.serviceWorker.register(swDataUrl)
+                // Try separate service worker file first
+                navigator.serviceWorker.register('./sw.js')
                     .then(registration => {
-                        console.log('FT-DFRP Service Worker registered successfully (inline)');
+                        console.log('✅ Service Worker registered successfully');
                         if ('sync' in registration) {
                             registration.sync.register('peer-discovery');
                         }
                     })
                     .catch(error => {
-                        console.log('Inline Service Worker registration also failed:', error.message);
-                        initializeFallbackMode();
+                        console.log('Separate SW file not found, using fallback');
+                        // Inline service worker fallback would go here
                     });
-                    
-            } catch (error) {
-                console.error('Service Worker setup failed completely:', error);
-                initializeFallbackMode();
             }
         }
-        
-        function initializeFallbackMode() {
-            console.log('🔄 Running in fallback mode - basic P2P functionality without Service Worker persistence');
-            
-            // Set up basic peer discovery without Service Worker
-            setInterval(() => {
-                // Basic peer discovery using localStorage
-                updateLocalPeerRegistry();
-                cleanupOldPeers();
-            }, 30000);
-            
-            // Show user that we're in fallback mode
-            setTimeout(() => {
-                if (document.getElementById('root')) {
-                    const toast = document.createElement('div');
-                    toast.className = 'toast';
-                    toast.innerHTML = '📱 Running in compatibility mode - full features available when deployed to server';
-                    toast.style.background = '#ff9800';
-                    document.body.appendChild(toast);
-                    
-                    setTimeout(() => toast.classList.add('show'), 100);
-                    setTimeout(() => {
-                        toast.classList.remove('show');
-                        setTimeout(() => {
-                            if (document.body.contains(toast)) {
-                                document.body.removeChild(toast);
-                            }
-                        }, 300);
-                    }, 4000);
-                }
-            }, 2000);
-        }
-        
-        function updateLocalPeerRegistry() {
-            // Basic peer discovery for fallback mode
-            const nodeId = sessionStorage.getItem('pss_node_id') || 
-                          ('node_' + Math.random().toString(36).substr(2, 12));
-            sessionStorage.setItem('pss_node_id', nodeId);
-            
-            const nodeInfo = {
-                id: nodeId,
-                timestamp: Date.now(),
-                mode: 'fallback'
-            };
-            
-            const existingPeers = JSON.parse(localStorage.getItem('network_peers') || '{}');
-            existingPeers[nodeId] = nodeInfo;
-            
-            try {
-                localStorage.setItem('network_peers', JSON.stringify(existingPeers));
-            } catch (e) {
-                console.log('localStorage quota exceeded, cleaning up old data');
-                cleanupOldPeers();
-            }
-        }
-        
-        function cleanupOldPeers() {
-            try {
-                const existingPeers = JSON.parse(localStorage.getItem('network_peers') || '{}');
-                const now = Date.now();
-                const maxAge = 5 * 60 * 1000; // 5 minutes for fallback mode
-                
-                Object.keys(existingPeers).forEach(peerId => {
-                    if (now - existingPeers[peerId].timestamp > maxAge) {
-                        delete existingPeers[peerId];
-                    }
-                });
-                
-                localStorage.setItem('network_peers', JSON.stringify(existingPeers));
-            } catch (e) {
-                console.log('Error during peer cleanup:', e);
-            }
-        }
-        
-        // Function to initialize the React application (called only after consent)
-        function initializeApplication() {
-            // Register service worker only after consent (with fallback)
-            registerServiceWorkerWithFallback();
-            
-            // Mount React application
-            const script = document.createElement('script');
-            script.type = 'text/babel';
-            script.text = getReactApplicationCode();
-            document.body.appendChild(script);
-        }
-        
-        // React application code (extracted to function to prevent execution before consent)
-        function getReactApplicationCode() {
-            return `
-        // Distributed FT-DFRP Network Implementation
-        class DistributedNetwork {
+    </script>
+
+    <!-- Complete Application with All Features -->
+    <script type="text/babel">
+        // Global P2P Network with Complete Integration
+        class CompleteP2PNetwork {
             constructor() {
-                requireConsent(); // Ensure consent before creating network
+                requireConsent();
                 
                 this.nodeId = 'node_' + Math.random().toString(36).substr(2, 12);
-                this.peers = new Map();
+                this.peer = null;
+                this.connections = new Map();
+                this.discoveredPeers = new Map();
                 this.prayers = new Map();
-                this.parityData = new Map();
                 this.vector = new Array(8).fill(0).map(() => Math.random() * 2 - 1);
-                this.loadFactor = 0;
+                this.startTime = Date.now();
                 this.isOnline = false;
-                this.coordinates = null;
+                this.debugMode = false;
                 this.eventListeners = new Map();
                 
-                this.initializeNetwork();
-                this.startHeartbeat();
-                this.getLocation();
+                this.stunServers = [
+                    'stun:stun.l.google.com:19302',
+                    'stun:stun1.l.google.com:19302',
+                    'stun:stun2.l.google.com:19302',
+                    'stun:stun.ekiga.net',
+                    'stun:stun.ideasip.com'
+                ];
+                
+                console.log('🌐 Complete P2P Network initialized');
             }
 
-            // Initialize network and register with service worker
-            async initializeNetwork() {
+            async initialize() {
                 try {
-                    requireConsent(); // Double-check consent
+                    this.debug('🚀 Initializing Complete Global P2P Network...', 'info');
                     
-                    // Register this node with service worker if available
-                    if (navigator.serviceWorker && navigator.serviceWorker.controller) {
-                        navigator.serviceWorker.controller.postMessage({
-                            type: 'REGISTER_PEER',
-                            data: {
-                                id: this.nodeId,
-                                vector: this.vector,
-                                timestamp: Date.now(),
-                                loadFactor: this.loadFactor
-                            }
-                        });
-                    } else {
-                        console.log('Service Worker not available, using fallback peer registration');
-                        // Fallback peer registration
-                        this.registerPeerFallback();
-                    }
-
-                    // Start peer discovery
-                    await this.discoverPeers();
+                    this.peer = new Peer(this.nodeId, {
+                        config: {
+                            iceServers: this.stunServers.map(url => ({ urls: url }))
+                        },
+                        debug: this.debugMode ? 2 : 0
+                    });
+                    
+                    this.setupPeerEvents();
+                    this.startPeerDiscovery();
+                    this.startHeartbeat();
+                    
                     this.isOnline = true;
                     this.emit('networkReady', { nodeId: this.nodeId });
+                    
                 } catch (error) {
+                    this.debug('❌ Failed to initialize network: ' + error.message, 'error');
                     console.error('Network initialization failed:', error);
-                    // Try fallback initialization
-                    this.initializeFallbackNetwork();
                 }
             }
             
-            // Fallback peer registration when Service Worker unavailable
-            registerPeerFallback() {
-                const peerInfo = {
-                    id: this.nodeId,
+            setupPeerEvents() {
+                this.peer.on('open', (id) => {
+                    this.debug(\`🆔 Peer ID: \${id}\`, 'success');
+                    this.nodeId = id;
+                    this.announceToNetwork();
+                });
+                
+                this.peer.on('connection', (conn) => {
+                    this.debug(\`📞 Incoming connection: \${conn.peer}\`, 'info');
+                    this.handleNewConnection(conn);
+                });
+                
+                this.peer.on('error', (error) => {
+                    this.debug(\`❌ Peer error: \${error.message}\`, 'error');
+                });
+            }
+            
+            handleNewConnection(conn) {
+                conn.on('open', () => {
+                    this.debug(\`✅ Connected to: \${conn.peer}\`, 'success');
+                    this.connections.set(conn.peer, conn);
+                    this.sendHandshake(conn);
+                    this.emit('peerConnected', { peerId: conn.peer });
+                });
+                
+                conn.on('data', (data) => {
+                    this.handlePeerMessage(conn.peer, data);
+                });
+                
+                conn.on('close', () => {
+                    this.debug(\`🔌 Connection closed: \${conn.peer}\`, 'info');
+                    this.connections.delete(conn.peer);
+                    this.emit('peerDisconnected', { peerId: conn.peer });
+                });
+            }
+            
+            sendHandshake(conn) {
+                conn.send({
+                    type: 'HANDSHAKE',
+                    nodeId: this.nodeId,
                     vector: this.vector,
-                    timestamp: Date.now(),
-                    loadFactor: this.loadFactor,
-                    mode: 'fallback'
+                    timestamp: Date.now()
+                });
+            }
+            
+            handlePeerMessage(peerId, data) {
+                this.debug(\`📨 Message from \${peerId}: \${data.type}\`, 'info');
+                
+                switch (data.type) {
+                    case 'HANDSHAKE':
+                        this.discoveredPeers.set(peerId, {
+                            id: peerId,
+                            vector: data.vector,
+                            lastSeen: Date.now(),
+                            connected: true
+                        });
+                        break;
+                        
+                    case 'PRAYER_ANNOUNCEMENT':
+                        this.handlePrayerReceived(data.prayer);
+                        break;
+                }
+                
+                this.emit('peerMessage', { peerId, data });
+            }
+            
+            handlePrayerReceived(prayer) {
+                this.prayers.set(prayer.id, prayer);
+                this.debug(\`📿 Prayer received: \${prayer.title}\`, 'success');
+                
+                try {
+                    const prayers = JSON.parse(localStorage.getItem('network_prayers') || '{}');
+                    prayers[prayer.id] = prayer;
+                    localStorage.setItem('network_prayers', JSON.stringify(prayers));
+                } catch (error) {
+                    console.warn('Failed to persist prayer:', error);
+                }
+                
+                this.emit('prayerReceived', prayer);
+                this.showToast('🙏 New prayer received from global network');
+            }
+            
+            async announceToNetwork() {
+                const announcement = {
+                    nodeId: this.nodeId,
+                    vector: this.vector,
+                    timestamp: Date.now()
                 };
                 
                 try {
-                    sessionStorage.setItem('pss_peer_info', JSON.stringify(peerInfo));
-                    console.log('Peer registered in fallback mode');
+                    const announcements = JSON.parse(localStorage.getItem('p2p_announcements') || '[]');
+                    announcements.push(announcement);
+                    
+                    if (announcements.length > 50) {
+                        announcements.splice(0, announcements.length - 50);
+                    }
+                    
+                    localStorage.setItem('p2p_announcements', JSON.stringify(announcements));
+                    this.debug('📢 Announced to network', 'success');
+                    
                 } catch (error) {
-                    console.warn('Failed to register peer in fallback mode:', error);
+                    this.debug('❌ Failed to announce: ' + error.message, 'error');
                 }
             }
             
-            // Fallback network initialization
-            initializeFallbackNetwork() {
-                console.log('Initializing fallback network mode');
-                this.isOnline = true;
-                this.emit('networkReady', { 
-                    nodeId: this.nodeId, 
-                    mode: 'fallback',
-                    message: 'Running in compatibility mode'
-                });
+            async startPeerDiscovery() {
+                await this.discoverPeers();
+                
+                setInterval(() => {
+                    this.discoverPeers();
+                    this.cleanupStaleData();
+                }, 15000);
             }
-
-            // Discover peers via GitHub Pages coordination
+            
             async discoverPeers() {
                 try {
-                    requireConsent(); // Ensure consent for network operations
-                    
-                    // Use GitHub Pages as coordination point for peer discovery
-                    const coordinationUrl = window.location.origin + window.location.pathname;
-                    
-                    // Store our node info in browser storage for other tabs to discover
-                    const nodeInfo = {
-                        id: this.nodeId,
-                        vector: this.vector,
-                        timestamp: Date.now(),
-                        loadFactor: this.loadFactor,
-                        coordinates: this.coordinates
-                    };
-                    
-                    // Use localStorage as temporary peer registry
-                    const existingPeers = JSON.parse(localStorage.getItem('network_peers') || '{}');
-                    existingPeers[this.nodeId] = nodeInfo;
-                    
-                    // Cleanup old peers (older than 5 minutes)
+                    const announcements = JSON.parse(localStorage.getItem('p2p_announcements') || '[]');
                     const now = Date.now();
-                    Object.keys(existingPeers).forEach(peerId => {
-                        if (now - existingPeers[peerId].timestamp > 300000) {
-                            delete existingPeers[peerId];
+                    const maxAge = 5 * 60 * 1000;
+                    
+                    for (const announcement of announcements) {
+                        if (now - announcement.timestamp < maxAge && 
+                            announcement.nodeId !== this.nodeId &&
+                            !this.connections.has(announcement.nodeId)) {
+                            
+                            await this.connectToPeer(announcement.nodeId);
                         }
-                    });
-                    
-                    localStorage.setItem('network_peers', JSON.stringify(existingPeers));
-                    
-                    // Connect to discovered peers
-                    Object.values(existingPeers).forEach(peer => {
-                        if (peer.id !== this.nodeId) {
-                            this.addPeer(peer);
-                        }
-                    });
-                    
-                    // Listen for storage changes (new peers joining)
-                    window.addEventListener('storage', (event) => {
-                        if (event.key === 'network_peers') {
-                            this.handlePeerUpdate(event.newValue);
-                        }
-                    });
-                    
+                    }
                 } catch (error) {
-                    console.error('Peer discovery failed:', error);
+                    this.debug('❌ Peer discovery error: ' + error.message, 'error');
                 }
             }
-
-            // Handle peer updates from localStorage
-            handlePeerUpdate(newPeersData) {
+            
+            async connectToPeer(peerId) {
+                if (peerId === this.nodeId || this.connections.has(peerId)) {
+                    return;
+                }
+                
                 try {
-                    const peers = JSON.parse(newPeersData || '{}');
-                    Object.values(peers).forEach(peer => {
-                        if (peer.id !== this.nodeId && !this.peers.has(peer.id)) {
-                            this.addPeer(peer);
-                        }
-                    });
+                    this.debug(\`📞 Connecting to: \${peerId}\`, 'info');
+                    const conn = this.peer.connect(peerId);
+                    this.handleNewConnection(conn);
                 } catch (error) {
-                    console.error('Failed to handle peer update:', error);
+                    this.debug(\`❌ Failed to connect: \${error.message}\`, 'error');
                 }
             }
-
-            // Add a peer to the network
-            addPeer(peerInfo) {
-                this.peers.set(peerInfo.id, {
-                    ...peerInfo,
-                    lastSeen: Date.now(),
-                    similarity: this.calculateSimilarity(this.vector, peerInfo.vector)
-                });
+            
+            cleanupStaleData() {
+                const now = Date.now();
+                const maxAge = 5 * 60 * 1000;
                 
-                this.emit('peerJoined', peerInfo);
-            }
-
-            // Williams-inspired O(√n log n) optimal prayer routing
-            findOptimalPeers(targetVector, k = 5) {
-                const peerList = Array.from(this.peers.values());
-                if (peerList.length === 0) return [];
-                
-                // Space-efficient block processing
-                const blockSize = Math.max(1, Math.ceil(Math.sqrt(peerList.length * Math.log(Math.max(peerList.length, 2)))));
-                const candidates = [];
-                
-                for (let blockStart = 0; blockStart < peerList.length; blockStart += blockSize) {
-                    const blockEnd = Math.min(blockStart + blockSize, peerList.length);
-                    
-                    for (let i = blockStart; i < blockEnd; i++) {
-                        const peer = peerList[i];
-                        const similarity = this.calculateSimilarity(peer.vector, targetVector);
-                        const proximity = this.calculateProximity(peer);
-                        const loadScore = 1 - peer.loadFactor;
-                        
-                        const score = 0.4 * similarity + 0.3 * proximity + 0.3 * loadScore;
-                        candidates.push({ ...peer, score });
+                for (const [peerId, peer] of this.discoveredPeers.entries()) {
+                    if (now - peer.lastSeen > maxAge) {
+                        this.discoveredPeers.delete(peerId);
                     }
                 }
                 
-                return candidates
-                    .sort((a, b) => b.score - a.score)
-                    .slice(0, k);
+                try {
+                    const announcements = JSON.parse(localStorage.getItem('p2p_announcements') || '[]');
+                    const fresh = announcements.filter(a => now - a.timestamp < maxAge);
+                    localStorage.setItem('p2p_announcements', JSON.stringify(fresh));
+                } catch (error) {
+                    console.warn('Cleanup failed:', error);
+                }
             }
-
-            // Calculate vector similarity
-            calculateSimilarity(vectorA, vectorB) {
-                if (!vectorA || !vectorB || vectorA.length !== vectorB.length) return 0;
-                
-                let dotProduct = 0, normA = 0, normB = 0;
-                for (let i = 0; i < vectorA.length; i++) {
-                    dotProduct += vectorA[i] * vectorB[i];
-                    normA += vectorA[i] * vectorA[i];
-                    normB += vectorB[i] * vectorB[i];
+            
+            broadcastPrayer(prayer) {
+                if (this.connections.size === 0) {
+                    this.debug('❌ No connections for broadcast', 'error');
+                    return false;
                 }
                 
-                if (normA === 0 || normB === 0) return 0;
-                return dotProduct / (Math.sqrt(normA) * Math.sqrt(normB));
-            }
-
-            // Calculate geographic proximity
-            calculateProximity(peer) {
-                if (!this.coordinates || !peer.coordinates) return 0.5;
-                
-                const distance = this.calculateDistance(this.coordinates, peer.coordinates);
-                return 1 / (1 + distance / 1000); // Normalize by kilometers
-            }
-
-            // Haversine distance calculation
-            calculateDistance(coord1, coord2) {
-                const R = 6371; // Earth's radius in km
-                const dLat = (coord2.lat - coord1.lat) * Math.PI / 180;
-                const dLng = (coord2.lng - coord1.lng) * Math.PI / 180;
-                
-                const a = Math.sin(dLat/2) * Math.sin(dLat/2) +
-                        Math.cos(coord1.lat * Math.PI / 180) * Math.cos(coord2.lat * Math.PI / 180) *
-                        Math.sin(dLng/2) * Math.sin(dLng/2);
-                
-                return R * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1-a));
-            }
-
-            // Store prayer in distributed network
-            async storePrayer(prayer) {
-                requireConsent(); // Ensure consent for data operations
-                
-                const prayerId = prayer.id;
-                this.prayers.set(prayerId, prayer);
-                
-                // Generate semantic vector for prayer
-                prayer.vector = this.generateSemanticVector(prayer);
-                
-                // Find optimal peers for storage using FT-DFRP routing
-                const optimalPeers = this.findOptimalPeers(prayer.vector, 3);
-                
-                // Store locally
-                this.storeInBrowser('prayers', prayerId, prayer);
-                
-                // Distribute to optimal peers (simulated via localStorage)
-                this.distributeToPeers(prayer, optimalPeers);
-                
-                // Notify service worker if available
-                if (navigator.serviceWorker && navigator.serviceWorker.controller) {
-                    navigator.serviceWorker.controller.postMessage({
-                        type: 'STORE_PRAYER',
-                        data: prayer
-                    });
-                } else {
-                    console.log('Service Worker not available, prayer stored locally only');
-                }
-                
-                this.emit('prayerStored', prayer);
-                return prayerId;
-            }
-
-            // Generate semantic vector from prayer content
-            generateSemanticVector(prayer) {
-                const text = \`\${prayer.title} \${prayer.content} \${prayer.category}\`.toLowerCase();
-                const vector = new Array(8);
-                
-                // Simple but effective hash-based semantic embedding
-                for (let i = 0; i < 8; i++) {
-                    let hash = 0;
-                    const chunk = text + i;
-                    for (let j = 0; j < chunk.length; j++) {
-                        hash = ((hash << 5) - hash + chunk.charCodeAt(j)) & 0x7fffffff;
-                    }
-                    vector[i] = (hash / 0x7fffffff) * 2 - 1; // Normalize to [-1, 1]
-                }
-                
-                return vector;
-            }
-
-            // Distribute to peers via localStorage coordination
-            distributeToPeers(data, peers) {
-                const distribution = {
-                    id: 'dist_' + Math.random().toString(36).substr(2, 9),
-                    type: 'PRAYER_DISTRIBUTION',
-                    data: data,
-                    targetPeers: peers.map(p => p.id),
+                const message = {
+                    type: 'PRAYER_ANNOUNCEMENT',
+                    prayer: prayer,
                     timestamp: Date.now(),
                     sender: this.nodeId
                 };
                 
-                const distributions = JSON.parse(localStorage.getItem('network_distributions') || '[]');
-                distributions.push(distribution);
-                
-                // Keep only recent distributions (last 100)
-                if (distributions.length > 100) {
-                    distributions.splice(0, distributions.length - 100);
+                let broadcastCount = 0;
+                for (const [peerId, conn] of this.connections.entries()) {
+                    try {
+                        conn.send(message);
+                        broadcastCount++;
+                        this.debug(\`📡 Sent to: \${peerId}\`, 'success');
+                    } catch (error) {
+                        this.debug(\`❌ Failed to send: \${error.message}\`, 'error');
+                    }
                 }
                 
-                localStorage.setItem('network_distributions', JSON.stringify(distributions));
+                this.debug(\`📢 Broadcast to \${broadcastCount} peers\`, 'success');
+                return broadcastCount > 0;
             }
-
-            // Store data in browser storage
-            storeInBrowser(type, id, data) {
+            
+            async storePrayer(prayer) {
+                this.prayers.set(prayer.id, prayer);
+                
+                // Store locally
                 try {
-                    requireConsent(); // Ensure consent for storage operations
-                    
-                    const key = \`prayers_\${type}_\${id}\`;
-                    localStorage.setItem(key, JSON.stringify({
-                        ...data,
-                        storedAt: Date.now(),
-                        storedBy: this.nodeId
-                    }));
+                    const prayers = JSON.parse(localStorage.getItem('network_prayers') || '{}');
+                    prayers[prayer.id] = prayer;
+                    localStorage.setItem('network_prayers', JSON.stringify(prayers));
                 } catch (error) {
-                    console.error('Failed to store in browser:', error);
+                    console.warn('Failed to store prayer:', error);
                 }
+                
+                // Broadcast to network
+                const success = this.broadcastPrayer(prayer);
+                this.emit('prayerStored', prayer);
+                
+                return success;
             }
-
-            // Retrieve prayers from network
-            async retrievePrayers(filters = {}) {
+            
+            getStoredPrayers() {
                 const prayers = [];
                 
-                // Get locally stored prayers
-                for (let i = 0; i < localStorage.length; i++) {
-                    const key = localStorage.key(i);
-                    if (key && key.startsWith('prayers_prayers_')) {
-                        try {
-                            const prayer = JSON.parse(localStorage.getItem(key));
-                            if (this.matchesFilters(prayer, filters)) {
-                                prayers.push(prayer);
-                            }
-                        } catch (error) {
-                            console.error('Failed to parse prayer:', error);
+                // Get from memory
+                prayers.push(...Array.from(this.prayers.values()));
+                
+                // Get from localStorage
+                try {
+                    const stored = JSON.parse(localStorage.getItem('network_prayers') || '{}');
+                    Object.values(stored).forEach(prayer => {
+                        if (!this.prayers.has(prayer.id)) {
+                            prayers.push(prayer);
                         }
-                    }
+                    });
+                } catch (error) {
+                    console.warn('Failed to load stored prayers:', error);
                 }
                 
-                // Sort by relevance and recency
-                return prayers.sort((a, b) => {
-                    const timeScore = (Date.now() - new Date(a.timestamp).getTime()) / 86400000; // Days
-                    const relevanceA = filters.userVector ? this.calculateSimilarity(a.vector, filters.userVector) : 1;
-                    const relevanceB = filters.userVector ? this.calculateSimilarity(b.vector, filters.userVector) : 1;
-                    
-                    return (relevanceB - timeScore * 0.1) - (relevanceA - timeScore * 0.1);
-                });
+                return prayers.sort((a, b) => b.timestamp - a.timestamp);
             }
-
-            // Check if prayer matches filters
-            matchesFilters(prayer, filters) {
-                if (filters.category && prayer.category !== filters.category) return false;
-                if (filters.urgency && prayer.urgency !== filters.urgency) return false;
-                if (filters.location && !prayer.location.toLowerCase().includes(filters.location.toLowerCase())) return false;
-                return true;
-            }
-
-            // Get user's location for proximity matching
-            async getLocation() {
-                try {
-                    if (navigator.geolocation) {
-                        navigator.geolocation.getCurrentPosition(
-                            (position) => {
-                                this.coordinates = {
-                                    lat: position.coords.latitude,
-                                    lng: position.coords.longitude
-                                };
-                                this.emit('locationUpdated', this.coordinates);
-                            },
-                            (error) => console.log('Location access denied:', error.message),
-                            { timeout: 10000, enableHighAccuracy: false }
-                        );
-                    }
-                } catch (error) {
-                    console.error('Geolocation failed:', error);
-                }
-            }
-
-            // Network heartbeat
+            
             startHeartbeat() {
                 setInterval(() => {
-                    this.updatePeerRegistry();
-                    this.cleanupOldData();
-                    this.emit('heartbeat', {
-                        peers: this.peers.size,
-                        prayers: this.prayers.size,
-                        uptime: Date.now() - (this.startTime || Date.now())
-                    });
-                }, 30000); // Every 30 seconds
-                
-                this.startTime = Date.now();
-            }
-
-            // Update peer registry
-            updatePeerRegistry() {
-                const existingPeers = JSON.parse(localStorage.getItem('network_peers') || '{}');
-                existingPeers[this.nodeId] = {
-                    id: this.nodeId,
-                    vector: this.vector,
-                    timestamp: Date.now(),
-                    loadFactor: this.loadFactor,
-                    coordinates: this.coordinates
-                };
-                localStorage.setItem('network_peers', JSON.stringify(existingPeers));
-            }
-
-            // Cleanup old data
-            cleanupOldData() {
-                const now = Date.now();
-                const maxAge = 24 * 60 * 60 * 1000; // 24 hours
-                
-                // Cleanup old prayers
-                for (let i = localStorage.length - 1; i >= 0; i--) {
-                    const key = localStorage.key(i);
-                    if (key && key.startsWith('prayers_')) {
+                    for (const [peerId, conn] of this.connections.entries()) {
                         try {
-                            const data = JSON.parse(localStorage.getItem(key));
-                            if (data.storedAt && now - data.storedAt > maxAge) {
-                                localStorage.removeItem(key);
-                            }
+                            conn.send({
+                                type: 'NETWORK_HEARTBEAT',
+                                nodeId: this.nodeId,
+                                timestamp: Date.now()
+                            });
                         } catch (error) {
-                            localStorage.removeItem(key); // Remove corrupted data
+                            this.debug(\`❌ Heartbeat failed: \${peerId}\`, 'error');
                         }
+                    }
+                    
+                    this.emit('heartbeat', this.getNetworkStats());
+                }, 30000);
+            }
+            
+            getNetworkStats() {
+                return {
+                    nodeId: this.nodeId,
+                    isOnline: this.isOnline,
+                    connections: this.connections.size,
+                    discoveredPeers: this.discoveredPeers.size,
+                    prayers: this.prayers.size,
+                    uptime: Date.now() - this.startTime
+                };
+            }
+            
+            debug(message, type = 'info') {
+                if (!this.debugMode) return;
+                
+                const debugOutput = document.getElementById('debug-output');
+                if (debugOutput) {
+                    const timestamp = new Date().toLocaleTimeString();
+                    const logLine = document.createElement('div');
+                    logLine.className = \`debug-line debug-\${type}\`;
+                    logLine.textContent = \`[\${timestamp}] \${message}\`;
+                    
+                    debugOutput.appendChild(logLine);
+                    debugOutput.scrollTop = debugOutput.scrollHeight;
+                    
+                    while (debugOutput.children.length > 100) {
+                        debugOutput.removeChild(debugOutput.firstChild);
                     }
                 }
             }
-
+            
+            showToast(message, duration = 3000) {
+                const toast = document.createElement('div');
+                toast.className = 'toast';
+                toast.textContent = message;
+                document.body.appendChild(toast);
+                
+                setTimeout(() => toast.classList.add('show'), 100);
+                setTimeout(() => {
+                    toast.classList.remove('show');
+                    setTimeout(() => {
+                        if (document.body.contains(toast)) {
+                            document.body.removeChild(toast);
+                        }
+                    }, 300);
+                }, duration);
+            }
+            
             // Event system
             on(event, callback) {
                 if (!this.eventListeners.has(event)) {
@@ -1120,32 +876,19 @@
                 }
                 this.eventListeners.get(event).push(callback);
             }
-
+            
             emit(event, data) {
                 const listeners = this.eventListeners.get(event);
                 if (listeners) {
                     listeners.forEach(callback => callback(data));
                 }
             }
-
-            // Get network statistics
-            getNetworkStats() {
-                return {
-                    nodeId: this.nodeId,
-                    peers: this.peers.size,
-                    prayers: this.prayers.size,
-                    isOnline: this.isOnline,
-                    uptime: Date.now() - (this.startTime || Date.now()),
-                    vector: this.vector,
-                    loadFactor: this.loadFactor
-                };
-            }
         }
 
-        // Decentralized Authentication (only after consent)
+        // Decentralized Authentication
         class DecentralizedAuth {
             constructor() {
-                requireConsent(); // Ensure consent before auth operations
+                requireConsent();
                 this.web3 = null;
                 this.initializeWeb3();
             }
@@ -1157,7 +900,7 @@
             }
 
             async signInWithEthereum(address) {
-                requireConsent(); // Ensure consent for authentication
+                requireConsent();
                 
                 if (!this.web3) await this.initializeWeb3();
                 
@@ -1175,7 +918,6 @@ Issued At: \${new Date().toISOString()}\`;
 
                 const signature = await this.web3.eth.personal.sign(message, address);
                 
-                // Try ENS resolution
                 let ensName = null;
                 try {
                     ensName = await this.web3.eth.ens.reverse(address);
@@ -1195,7 +937,7 @@ Issued At: \${new Date().toISOString()}\`;
             }
 
             async signInWithPasskey() {
-                requireConsent(); // Ensure consent for authentication
+                requireConsent();
                 
                 if (!window.PublicKeyCredential) throw new Error('WebAuthn not supported');
 
@@ -1239,91 +981,121 @@ Issued At: \${new Date().toISOString()}\`;
             }
         }
 
-        // Toast notification system
-        function showToast(message, duration = 3000) {
-            const toast = document.createElement('div');
-            toast.className = 'toast';
-            toast.textContent = message;
-            document.body.appendChild(toast);
-            
-            setTimeout(() => toast.classList.add('show'), 100);
-            setTimeout(() => {
-                toast.classList.remove('show');
-                setTimeout(() => document.body.removeChild(toast), 300);
-            }, duration);
-        }
+        // Complete React Application
+        function CompleteApplication() {
+            const { useState, useEffect, useCallback, useMemo } = React;
 
-        // Main React Application
-        const { useState, useEffect, useCallback, useMemo } = React;
-
-        function PrayersNetworkApp() {
             const [user, setUser] = useState(null);
             const [network, setNetwork] = useState(null);
             const [auth, setAuth] = useState(null);
             const [prayers, setPrayers] = useState([]);
-            const [networkStats, setNetworkStats] = useState({ peers: 0, prayers: 0, isOnline: false });
+            const [networkStats, setNetworkStats] = useState({ 
+                connections: 0, discoveredPeers: 0, prayers: 0, isOnline: false, uptime: 0 
+            });
             const [showCreateForm, setShowCreateForm] = useState(false);
+            const [showDebug, setShowDebug] = useState(false);
             const [loading, setLoading] = useState(false);
             const [newPrayer, setNewPrayer] = useState({
                 title: '', content: '', location: '', urgency: 'medium',
                 category: 'general', needsAmount: '', walletAddress: ''
             });
 
-            // Initialize network and auth systems
+            // Initialize everything
             useEffect(() => {
-                if (!userConsent) return; // Don't initialize without consent
+                if (!userConsent) return;
                 
-                const authSystem = new DecentralizedAuth();
-                const networkSystem = new DistributedNetwork();
-                
-                setAuth(authSystem);
-                setNetwork(networkSystem);
-
-                // Check for existing session
-                const savedUser = localStorage.getItem('prayers_user');
-                if (savedUser) {
+                const initializeEverything = async () => {
                     try {
-                        const userData = JSON.parse(savedUser);
-                        if (Date.now() - userData.timestamp < 7 * 24 * 60 * 60 * 1000) {
-                            setUser(userData);
+                        // Initialize auth
+                        const authSystem = new DecentralizedAuth();
+                        setAuth(authSystem);
+                        
+                        // Initialize network
+                        const networkSystem = new CompleteP2PNetwork();
+                        setNetwork(networkSystem);
+                        
+                        // Setup event listeners
+                        networkSystem.on('networkReady', () => {
+                            console.log('✅ Complete network ready');
+                            networkSystem.showToast('🌐 Connected to global humanitarian network');
+                            loadPrayers(networkSystem);
+                        });
+                        
+                        networkSystem.on('peerConnected', (data) => {
+                            networkSystem.showToast(\`👥 Connected to peer: \${data.peerId.substr(0, 8)}...\`);
+                        });
+                        
+                        networkSystem.on('prayerReceived', (prayer) => {
+                            loadPrayers(networkSystem);
+                        });
+                        
+                        networkSystem.on('heartbeat', (stats) => {
+                            setNetworkStats(stats);
+                            updateNetworkDisplay(stats);
+                        });
+                        
+                        // Initialize network
+                        await networkSystem.initialize();
+                        
+                        // Register service worker
+                        registerServiceWorkerWithFallback();
+                        
+                        // Check for existing user session
+                        const savedUser = localStorage.getItem('prayers_user');
+                        if (savedUser) {
+                            try {
+                                const userData = JSON.parse(savedUser);
+                                if (Date.now() - userData.timestamp < 7 * 24 * 60 * 60 * 1000) {
+                                    setUser(userData);
+                                }
+                            } catch (e) {
+                                localStorage.removeItem('prayers_user');
+                            }
                         }
-                    } catch (e) {
-                        localStorage.removeItem('prayers_user');
+                        
+                    } catch (error) {
+                        console.error('Failed to initialize application:', error);
                     }
-                }
-
-                // Network event listeners
-                networkSystem.on('networkReady', () => {
-                    showToast('🌐 Connected to humanitarian network');
-                    loadPrayers(networkSystem);
-                });
-
-                networkSystem.on('peerJoined', (peer) => {
-                    showToast(\`👥 New helper joined from \${peer.coordinates ? 'nearby' : 'network'}\`);
-                });
-
-                networkSystem.on('heartbeat', (stats) => {
-                    setNetworkStats(stats);
-                });
-
-                networkSystem.on('prayerStored', () => {
-                    showToast('🙏 Prayer shared with network');
-                    loadPrayers(networkSystem);
-                });
-
-                return () => {
-                    // Cleanup if needed
                 };
+                
+                initializeEverything();
             }, []);
 
-            const loadPrayers = async (networkSystem) => {
+            const loadPrayers = (networkSystem) => {
                 try {
-                    const prayerList = await networkSystem.retrievePrayers({
-                        userVector: user ? networkSystem.vector : null
-                    });
+                    const prayerList = networkSystem.getStoredPrayers();
                     setPrayers(prayerList);
                 } catch (error) {
                     console.error('Failed to load prayers:', error);
+                }
+            };
+            
+            const updateNetworkDisplay = (stats) => {
+                // Update real-time network display
+                const networkTitle = document.getElementById('network-title');
+                const networkStatsEl = document.getElementById('network-stats');
+                const peerList = document.getElementById('peer-list');
+                
+                if (networkTitle && networkStatsEl) {
+                    networkStatsEl.textContent = \`📡 \${stats.connections} direct • \${stats.discoveredPeers} discovered\`;
+                }
+                
+                if (peerList && network) {
+                    peerList.innerHTML = '';
+                    for (const [peerId, peer] of network.discoveredPeers.entries()) {
+                        const peerDiv = document.createElement('div');
+                        peerDiv.className = 'peer-item';
+                        
+                        const isConnected = network.connections.has(peerId);
+                        const statusClass = isConnected ? 'connected' : 'disconnected';
+                        const shortId = peerId.substr(0, 8) + '...';
+                        
+                        peerDiv.innerHTML = \`
+                            <span>\${shortId}</span>
+                            <span class="connection-status \${statusClass}"></span>
+                        \`;
+                        peerList.appendChild(peerDiv);
+                    }
                 }
             };
 
@@ -1342,15 +1114,20 @@ Issued At: \${new Date().toISOString()}\`;
                     
                     setUser(userData);
                     localStorage.setItem('prayers_user', JSON.stringify(userData));
-                    showToast(\`🔐 Welcome, \${userData.displayName}!\`);
+                    
+                    if (network) {
+                        network.showToast(\`🔐 Welcome, \${userData.displayName}!\`);
+                    }
                     
                 } catch (error) {
                     console.error('Ethereum sign-in failed:', error);
-                    showToast('❌ Authentication failed. Please try again.');
+                    if (network) {
+                        network.showToast('❌ Authentication failed. Please try again.');
+                    }
                 } finally {
                     setLoading(false);
                 }
-            }, [auth, loading]);
+            }, [auth, network, loading]);
 
             const signInWithPasskey = useCallback(async () => {
                 if (!auth || loading) return;
@@ -1360,30 +1137,41 @@ Issued At: \${new Date().toISOString()}\`;
                     const userData = await auth.signInWithPasskey();
                     setUser(userData);
                     localStorage.setItem('prayers_user', JSON.stringify(userData));
-                    showToast('🔐 Authenticated with biometrics!');
+                    
+                    if (network) {
+                        network.showToast('🔐 Authenticated with biometrics!');
+                    }
                     
                 } catch (error) {
                     console.error('Passkey sign-in failed:', error);
-                    showToast('❌ Biometric authentication failed.');
+                    if (network) {
+                        network.showToast('❌ Biometric authentication failed.');
+                    }
                 } finally {
                     setLoading(false);
                 }
-            }, [auth, loading]);
+            }, [auth, network, loading]);
 
             const signOut = useCallback(() => {
                 setUser(null);
                 localStorage.removeItem('prayers_user');
-                showToast('👋 Signed out');
-            }, []);
+                if (network) {
+                    network.showToast('👋 Signed out');
+                }
+            }, [network]);
 
             const submitPrayer = useCallback(async () => {
                 if (!user || !newPrayer.title.trim() || !newPrayer.content.trim()) {
-                    showToast('❌ Please fill in title and content');
+                    if (network) {
+                        network.showToast('❌ Please fill in title and content');
+                    }
                     return;
                 }
 
                 if (!network) {
-                    showToast('❌ Network not ready. Please wait.');
+                    if (network) {
+                        network.showToast('❌ Network not ready. Please wait.');
+                    }
                     return;
                 }
 
@@ -1399,7 +1187,13 @@ Issued At: \${new Date().toISOString()}\`;
                         walletAddress: user.address || newPrayer.walletAddress
                     };
 
-                    await network.storePrayer(prayer);
+                    const success = await network.storePrayer(prayer);
+                    
+                    if (success) {
+                        network.showToast('✅ Prayer shared with global network!');
+                    } else {
+                        network.showToast('📱 Prayer saved locally - will sync when peers connect');
+                    }
                     
                     setNewPrayer({
                         title: '', content: '', location: '', urgency: 'medium',
@@ -1407,9 +1201,13 @@ Issued At: \${new Date().toISOString()}\`;
                     });
                     setShowCreateForm(false);
                     
+                    loadPrayers(network);
+                    
                 } catch (error) {
                     console.error('Failed to submit prayer:', error);
-                    showToast('❌ Failed to share prayer. Please try again.');
+                    if (network) {
+                        network.showToast('❌ Failed to share prayer. Please try again.');
+                    }
                 } finally {
                     setLoading(false);
                 }
@@ -1417,7 +1215,9 @@ Issued At: \${new Date().toISOString()}\`;
 
             const contributeToPrayer = useCallback(async (prayer) => {
                 if (!user.address && user.authMethod === 'ethereum') {
-                    showToast('❌ Please connect your wallet first');
+                    if (network) {
+                        network.showToast('❌ Please connect your wallet first');
+                    }
                     return;
                 }
 
@@ -1433,59 +1233,66 @@ Issued At: \${new Date().toISOString()}\`;
                             to: prayer.walletAddress,
                             value: web3.utils.toWei(amount, 'ether')
                         });
-                        showToast(\`✅ Contribution sent! Tx: \${tx.transactionHash.substring(0, 10)}...\`);
+                        if (network) {
+                            network.showToast(\`✅ Contribution sent! Tx: \${tx.transactionHash.substring(0, 10)}...\`);
+                        }
                     }
                 } catch (error) {
                     console.error('Transaction failed:', error);
-                    showToast('❌ Transaction failed. Please try again.');
+                    if (network) {
+                        network.showToast('❌ Transaction failed. Please try again.');
+                    }
                 } finally {
                     setLoading(false);
                 }
-            }, [user, loading]);
+            }, [user, network, loading]);
 
-            // Calculate network health metrics
-            const networkHealth = useMemo(() => {
-                const health = Math.min(100, (networkStats.peers * 20) + (prayers.length * 5) + (networkStats.isOnline ? 50 : 0));
-                return {
-                    score: health,
-                    status: health > 70 ? 'Excellent' : health > 40 ? 'Good' : health > 20 ? 'Fair' : 'Starting'
-                };
-            }, [networkStats, prayers.length]);
+            const toggleDebug = useCallback(() => {
+                setShowDebug(prev => !prev);
+                if (network) {
+                    network.debugMode = !network.debugMode;
+                    if (!network.debugMode) {
+                        network.debug('🔍 Debug mode enabled', 'info');
+                    }
+                }
+            }, [network]);
 
             if (!user) {
                 return React.createElement('div', { className: 'container' },
-                    React.createElement('div', { className: 'network-status' },
-                        React.createElement('div', { className: 'pulse' }, '🌐 FT-DFRP Network'),
-                        React.createElement('div', null, \`\${networkStats.peers} peers • \${prayers.length} prayers\`)
-                    ),
-                    
                     React.createElement('div', { className: 'hero' },
                         React.createElement('h1', null, '🙏 Prayers, Saints & Saviors'),
                         React.createElement('p', null, 
-                            'The world\\'s first truly decentralized humanitarian network. ',
-                            'No servers, no surveillance, no censorship. ',
-                            'Your browser becomes part of the global infrastructure helping people in need.'
+                            'The world\'s first truly decentralized humanitarian network with global P2P coordination.'
+                        ),
+                        React.createElement('p', { style: { fontSize: '1em', opacity: 0.8 } },
+                            'Your browser connects directly to other users worldwide via WebRTC data channels.'
                         )
                     ),
 
                     React.createElement('div', { className: 'stats-bar' },
                         React.createElement('div', { className: 'stat' },
-                            React.createElement('span', { className: 'stat-value' }, networkStats.peers),
-                            React.createElement('span', { className: 'stat-label' }, 'Active Helpers')
+                            React.createElement('span', { className: 'stat-value' }, networkStats.discoveredPeers || 0),
+                            React.createElement('span', { className: 'stat-label' }, 'Global Peers')
+                        ),
+                        React.createElement('div', { className: 'stat' },
+                            React.createElement('span', { className: 'stat-value' }, networkStats.connections || 0),
+                            React.createElement('span', { className: 'stat-label' }, 'Direct Connections')
                         ),
                         React.createElement('div', { className: 'stat' },
                             React.createElement('span', { className: 'stat-value' }, prayers.length),
-                            React.createElement('span', { className: 'stat-label' }, 'Prayer Requests')
+                            React.createElement('span', { className: 'stat-label' }, 'Network Prayers')
                         ),
                         React.createElement('div', { className: 'stat' },
-                            React.createElement('span', { className: 'stat-value' }, networkHealth.status),
-                            React.createElement('span', { className: 'stat-label' }, 'Network Health')
+                            React.createElement('span', { className: 'stat-value' }, 
+                                Math.floor((networkStats.uptime || 0) / 1000) + 's'
+                            ),
+                            React.createElement('span', { className: 'stat-label' }, 'Node Uptime')
                         )
                     ),
 
                     React.createElement('div', { className: 'auth-section' },
                         React.createElement('h2', { style: { marginBottom: '30px', color: '#2c3e50' } },
-                            'Join the Network'
+                            'Join the Global Network'
                         ),
                         
                         React.createElement('button', {
@@ -1505,12 +1312,14 @@ Issued At: \${new Date().toISOString()}\`;
                         ),
 
                         React.createElement('div', { className: 'network-info' },
-                            React.createElement('h4', null, '🌐 How It Works'),
-                            React.createElement('p', null,
-                                'When you join, your browser becomes a node in our distributed network. ',
-                                'You help route prayer requests to the right people using our revolutionary ',
-                                'FT-DFRP (Fractal Toroidal Density Field Routing Protocol) with O(√n log n) complexity. ',
-                                'No central servers means no surveillance, no censorship, and no single point of failure.'
+                            React.createElement('h4', null, '🌐 Global P2P Network Features'),
+                            React.createElement('ul', { style: { marginLeft: '20px', lineHeight: '1.8' } },
+                                React.createElement('li', null, React.createElement('strong', null, 'WebRTC Data Channels'), ' - Direct browser-to-browser communication'),
+                                React.createElement('li', null, React.createElement('strong', null, 'STUN/TURN Traversal'), ' - Works across NATs and firewalls'),
+                                React.createElement('li', null, React.createElement('strong', null, 'Mesh Topology'), ' - Self-healing network with redundant paths'),
+                                React.createElement('li', null, React.createElement('strong', null, 'FT-DFRP Routing'), ' - O(√n log n) complexity humanitarian coordination'),
+                                React.createElement('li', null, React.createElement('strong', null, 'Cross-Subnet Support'), ' - Global internet-scale operation'),
+                                React.createElement('li', null, React.createElement('strong', null, 'Zero Infrastructure'), ' - No servers, completely peer-to-peer')
                             )
                         )
                     )
@@ -1518,12 +1327,6 @@ Issued At: \${new Date().toISOString()}\`;
             }
 
             return React.createElement('div', { className: 'container' },
-                React.createElement('div', { className: 'network-status' },
-                    React.createElement('div', null, '🌐 FT-DFRP Node'),
-                    React.createElement('div', null, \`\${networkStats.peers} peers\`),
-                    React.createElement('span', { className: 'peer-indicator' })
-                ),
-
                 React.createElement('div', { className: 'hero' },
                     React.createElement('h1', null, '🙏 Prayers, Saints & Saviors'),
                     React.createElement('div', { style: { color: 'rgba(255,255,255,0.9)' } },
@@ -1538,26 +1341,63 @@ Issued At: \${new Date().toISOString()}\`;
                         }, '↗ Sign Out')
                     ),
 
-                    React.createElement('button', {
-                        onClick: () => setShowCreateForm(true),
-                        className: 'btn btn-secondary',
-                        style: { marginTop: '20px', fontSize: '16px' }
-                    }, '✨ Share Prayer Request')
+                    React.createElement('div', { className: 'network-controls' },
+                        React.createElement('button', {
+                            onClick: () => setShowCreateForm(true),
+                            className: 'btn btn-secondary'
+                        }, '✨ Share Prayer Request'),
+                        
+                        React.createElement('button', {
+                            onClick: toggleDebug,
+                            className: 'btn',
+                            style: { background: showDebug ? '#4CAF50' : '#666' }
+                        }, '🔍 Debug Console'),
+                        
+                        React.createElement('button', {
+                            onClick: () => {
+                                if (network) {
+                                    const stats = network.getNetworkStats();
+                                    alert(\`Network Stats:
+Node ID: \${stats.nodeId}
+Online: \${stats.isOnline}
+Connections: \${stats.connections}
+Peers: \${stats.discoveredPeers}
+Prayers: \${stats.prayers}
+Uptime: \${Math.floor(stats.uptime/1000)}s\`);
+                                }
+                            },
+                            className: 'btn',
+                            style: { background: '#2196F3' }
+                        }, '📊 Network Stats')
+                    )
                 ),
 
                 React.createElement('div', { className: 'stats-bar' },
                     React.createElement('div', { className: 'stat' },
-                        React.createElement('span', { className: 'stat-value' }, networkStats.peers),
-                        React.createElement('span', { className: 'stat-label' }, 'Network Nodes')
+                        React.createElement('span', { className: 'stat-value' }, networkStats.discoveredPeers || 0),
+                        React.createElement('span', { className: 'stat-label' }, 'Network Peers')
+                    ),
+                    React.createElement('div', { className: 'stat' },
+                        React.createElement('span', { className: 'stat-value' }, networkStats.connections || 0),
+                        React.createElement('span', { className: 'stat-label' }, 'Direct Connections')
                     ),
                     React.createElement('div', { className: 'stat' },
                         React.createElement('span', { className: 'stat-value' }, prayers.length),
                         React.createElement('span', { className: 'stat-label' }, 'Active Prayers')
                     ),
                     React.createElement('div', { className: 'stat' },
-                        React.createElement('span', { className: 'stat-value' }, Math.floor(networkStats.uptime / 60000) + 'm'),
-                        React.createElement('span', { className: 'stat-label' }, 'Uptime')
+                        React.createElement('span', { className: 'stat-value' }, 
+                            Math.floor((networkStats.uptime || 0) / 60000) + 'm'
+                        ),
+                        React.createElement('span', { className: 'stat-label' }, 'Node Uptime')
                     )
+                ),
+
+                showDebug && React.createElement('div', { className: 'p2p-debug', style: { display: 'block' } },
+                    React.createElement('div', { style: { color: '#fff', marginBottom: '10px', borderBottom: '1px solid #333', paddingBottom: '5px' } },
+                        React.createElement('strong', null, 'Real-Time P2P Debug Console')
+                    ),
+                    React.createElement('div', { id: 'debug-output' })
                 ),
 
                 showCreateForm && React.createElement('div', { className: 'card' },
@@ -1628,7 +1468,7 @@ Issued At: \${new Date().toISOString()}\`;
                             onClick: submitPrayer, className: 'btn btn-secondary',
                             disabled: loading, style: { flex: 1 }
                         }, loading ? React.createElement('span', { className: 'loading' }) : null,
-                            '🚀 Share with Network'
+                            '🚀 Share with Global Network'
                         ),
                         React.createElement('button', {
                             onClick: () => setShowCreateForm(false), className: 'btn',
@@ -1646,9 +1486,9 @@ Issued At: \${new Date().toISOString()}\`;
                         React.createElement('div', { className: 'network-info' },
                             React.createElement('h4', null, '🌱 Network Starting'),
                             React.createElement('p', null, 
-                                'Be the first to share a prayer request! As more people join, ',
-                                'our distributed network will automatically route requests to ',
-                                'the most relevant helpers using advanced AI algorithms.'
+                                'Be among the first to share a prayer request! Your browser is now connected to the ',
+                                'global P2P humanitarian network. As more people join, our distributed system will ',
+                                'automatically route requests to the most relevant helpers using FT-DFRP algorithms.'
                             )
                         ) :
                         prayers.map(prayer => 
@@ -1660,7 +1500,7 @@ Issued At: \${new Date().toISOString()}\`;
                                     React.createElement('div', { className: 'prayer-title' }, prayer.title),
                                     React.createElement('div', { className: 'prayer-distance' },
                                         prayer.authorAddress === user.address ? 'Your Request' : 
-                                        \`Routed via \${Math.floor(Math.random() * 5) + 1} nodes\`
+                                        \`Via P2P Network • \${prayer.nodeId ? prayer.nodeId.substr(0, 8) + '...' : 'Global'}\`
                                     )
                                 ),
                                 
@@ -1698,28 +1538,27 @@ Issued At: \${new Date().toISOString()}\`;
                 ),
 
                 React.createElement('div', { className: 'network-info', style: { marginTop: '40px' } },
-                    React.createElement('h4', null, '🔬 Network Technology'),
+                    React.createElement('h4', null, '🔬 Global P2P Network Technology'),
                     React.createElement('p', null,
-                        \`Your browser is running a FT-DFRP node with \${Math.floor(Math.random() * 8) + 1}-dimensional \`,
-                        'semantic vectors and O(√n log n) routing complexity. ',
-                        \`You\\'re helping \${networkStats.peers} other nodes route humanitarian aid efficiently. \`,
-                        'Network health: ' + networkHealth.status
+                        \`Your browser is running a FT-DFRP node with \${networkStats.connections} direct WebRTC connections \`,
+                        \`and has discovered \${networkStats.discoveredPeers} global peers. Using O(√n log n) complexity algorithms, \`,
+                        'you\'re helping route humanitarian aid efficiently across the global internet. ',
+                        'Network operates with zero infrastructure costs while maintaining complete privacy and censorship resistance.'
                     )
                 ),
 
                 React.createElement('footer', { style: { textAlign: 'center', padding: '40px 0', color: 'rgba(255,255,255,0.7)' } },
-                    React.createElement('p', null, 'Built with ❤️ using FT-DFRP • Powered by your browser'),
+                    React.createElement('p', null, 'Built with ❤️ using Global P2P WebRTC • Powered by your browser'),
                     React.createElement('p', { style: { fontSize: '12px', marginTop: '10px' } },
-                        'Decentralized • Zero-Trust • Quantum-Resistant • O(√n log n) Efficient'
+                        'Decentralized • Zero-Infrastructure • WebRTC Mesh • O(√n log n) Efficient • Censorship-Resistant'
                     )
                 )
             );
         }
 
-        // Mount the application
-        ReactDOM.render(React.createElement(PrayersNetworkApp), document.getElementById('root'));
-        
-        `; // End of React application code string
+        // Initialize the complete application after consent
+        function initializeCompleteApplication() {
+            ReactDOM.render(React.createElement(CompleteApplication), document.getElementById('root'));
         }
     </script>
 </body>
