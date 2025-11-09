@@ -460,12 +460,58 @@
 
     <!-- Service Worker Registration (only after consent) -->
     <script>
-        function registerServiceWorker() {
+        function registerServiceWorkerWithFallback() {
             requireConsent(); // Ensure consent before registering
             
+            // Check if we're on HTTP/HTTPS (required for Service Workers)
+            const isSecureContext = window.location.protocol === 'https:' || 
+                                  window.location.protocol === 'http:' || 
+                                  window.location.hostname === 'localhost' ||
+                                  window.location.hostname === '127.0.0.1';
+            
+            if (!isSecureContext) {
+                console.log('Service Workers require HTTP/HTTPS. Running in fallback mode.');
+                initializeFallbackMode();
+                return;
+            }
+            
             if ('serviceWorker' in navigator) {
+                // Create service worker as a separate file approach
+                createAndRegisterServiceWorker();
+            } else {
+                console.log('Service Workers not supported. Running in fallback mode.');
+                initializeFallbackMode();
+            }
+        }
+        
+        function createAndRegisterServiceWorker() {
+            // Instead of blob URL, try to use separate service worker file first
+            
+            if (window.location.protocol === 'file:') {
+                console.log('Local file detected. Service Workers disabled for local development.');
+                initializeFallbackMode();
+                return;
+            }
+            
+            // Try to register separate service worker file first (production)
+            navigator.serviceWorker.register('./sw.js')
+                .then(registration => {
+                    console.log('FT-DFRP Service Worker registered successfully (separate file)');
+                    if ('sync' in registration) {
+                        registration.sync.register('peer-discovery');
+                    }
+                })
+                .catch(error => {
+                    console.log('Separate SW file not found, trying inline approach:', error.message);
+                    // Fallback to inline service worker
+                    registerInlineServiceWorker();
+                });
+        }
+        
+        function registerInlineServiceWorker() {
+            try {
                 const swCode = `
-                    // Persistent FT-DFRP Node Service Worker
+                    // Persistent FT-DFRP Node Service Worker (Inline Version)
                     const CACHE_NAME = 'prayers-network-v1';
                     const DB_NAME = 'PrayersNetworkDB';
                     const STORES = ['peers', 'prayers', 'parity'];
@@ -502,18 +548,6 @@
                         return store.put(data);
                     }
                     
-                    // Retrieve data
-                    async function getData(storeName, id) {
-                        if (!db) await initDB();
-                        const transaction = db.transaction([storeName], 'readonly');
-                        const store = transaction.objectStore(storeName);
-                        return new Promise((resolve, reject) => {
-                            const request = store.get(id);
-                            request.onsuccess = () => resolve(request.result);
-                            request.onerror = () => reject(request.error);
-                        });
-                    }
-                    
                     // Background sync for peer discovery
                     self.addEventListener('sync', event => {
                         if (event.tag === 'peer-discovery') {
@@ -528,67 +562,129 @@
                         switch (type) {
                             case 'STORE_PRAYER':
                                 await storeData('prayers', data);
-                                broadcastToPeers('NEW_PRAYER', data);
-                                break;
-                            case 'STORE_PARITY':
-                                await storeData('parity', data);
+                                console.log('Prayer stored via inline SW');
                                 break;
                             case 'REGISTER_PEER':
                                 peers.set(data.id, data);
                                 await storeData('peers', data);
                                 break;
-                            case 'GET_NETWORK_STATUS':
-                                event.ports[0].postMessage({
-                                    peers: peers.size,
-                                    isOnline,
-                                    uptime: Date.now() - (self.startTime || Date.now())
-                                });
-                                break;
                         }
                     });
                     
-                    // Broadcast to connected peers (simulation - in reality use WebRTC)
-                    function broadcastToPeers(type, data) {
-                        peers.forEach(peer => {
-                            console.log('Broadcasting to peer:', peer.id, type, data);
-                        });
-                    }
-                    
                     // Periodic peer discovery
                     async function discoverPeers() {
-                        console.log('Discovering peers in background...');
+                        console.log('Inline SW: Discovering peers...');
                         isOnline = true;
                     }
                     
-                    // Keep-alive mechanism
-                    setInterval(() => {
-                        discoverPeers();
-                    }, 30000); // Every 30 seconds
+                    setInterval(discoverPeers, 30000);
                     
-                    self.startTime = Date.now();
-                    initDB();
-                    console.log('FT-DFRP Service Worker: Network node active (user consent verified)');
+                    self.addEventListener('install', () => self.skipWaiting());
+                    self.addEventListener('activate', event => event.waitUntil(clients.claim()));
+                    
+                    initDB().then(() => {
+                        console.log('FT-DFRP Service Worker (inline): Network node active');
+                    });
                 `;
                 
-                const blob = new Blob([swCode], { type: 'application/javascript' });
-                const swUrl = URL.createObjectURL(blob);
+                // Use data URL for better compatibility than blob
+                const swDataUrl = 'data:application/javascript,' + encodeURIComponent(swCode);
                 
-                navigator.serviceWorker.register(swUrl)
+                navigator.serviceWorker.register(swDataUrl)
                     .then(registration => {
-                        console.log('FT-DFRP Service Worker registered successfully');
-                        // Enable background sync
+                        console.log('FT-DFRP Service Worker registered successfully (inline)');
                         if ('sync' in registration) {
                             registration.sync.register('peer-discovery');
                         }
                     })
-                    .catch(error => console.log('Service Worker registration failed:', error));
+                    .catch(error => {
+                        console.log('Inline Service Worker registration also failed:', error.message);
+                        initializeFallbackMode();
+                    });
+                    
+            } catch (error) {
+                console.error('Service Worker setup failed completely:', error);
+                initializeFallbackMode();
+            }
+        }
+        
+        function initializeFallbackMode() {
+            console.log('🔄 Running in fallback mode - basic P2P functionality without Service Worker persistence');
+            
+            // Set up basic peer discovery without Service Worker
+            setInterval(() => {
+                // Basic peer discovery using localStorage
+                updateLocalPeerRegistry();
+                cleanupOldPeers();
+            }, 30000);
+            
+            // Show user that we're in fallback mode
+            setTimeout(() => {
+                if (document.getElementById('root')) {
+                    const toast = document.createElement('div');
+                    toast.className = 'toast';
+                    toast.innerHTML = '📱 Running in compatibility mode - full features available when deployed to server';
+                    toast.style.background = '#ff9800';
+                    document.body.appendChild(toast);
+                    
+                    setTimeout(() => toast.classList.add('show'), 100);
+                    setTimeout(() => {
+                        toast.classList.remove('show');
+                        setTimeout(() => {
+                            if (document.body.contains(toast)) {
+                                document.body.removeChild(toast);
+                            }
+                        }, 300);
+                    }, 4000);
+                }
+            }, 2000);
+        }
+        
+        function updateLocalPeerRegistry() {
+            // Basic peer discovery for fallback mode
+            const nodeId = sessionStorage.getItem('pss_node_id') || 
+                          ('node_' + Math.random().toString(36).substr(2, 12));
+            sessionStorage.setItem('pss_node_id', nodeId);
+            
+            const nodeInfo = {
+                id: nodeId,
+                timestamp: Date.now(),
+                mode: 'fallback'
+            };
+            
+            const existingPeers = JSON.parse(localStorage.getItem('network_peers') || '{}');
+            existingPeers[nodeId] = nodeInfo;
+            
+            try {
+                localStorage.setItem('network_peers', JSON.stringify(existingPeers));
+            } catch (e) {
+                console.log('localStorage quota exceeded, cleaning up old data');
+                cleanupOldPeers();
+            }
+        }
+        
+        function cleanupOldPeers() {
+            try {
+                const existingPeers = JSON.parse(localStorage.getItem('network_peers') || '{}');
+                const now = Date.now();
+                const maxAge = 5 * 60 * 1000; // 5 minutes for fallback mode
+                
+                Object.keys(existingPeers).forEach(peerId => {
+                    if (now - existingPeers[peerId].timestamp > maxAge) {
+                        delete existingPeers[peerId];
+                    }
+                });
+                
+                localStorage.setItem('network_peers', JSON.stringify(existingPeers));
+            } catch (e) {
+                console.log('Error during peer cleanup:', e);
             }
         }
         
         // Function to initialize the React application (called only after consent)
         function initializeApplication() {
-            // Register service worker only after consent
-            registerServiceWorker();
+            // Register service worker only after consent (with fallback)
+            registerServiceWorkerWithFallback();
             
             // Mount React application
             const script = document.createElement('script');
@@ -625,8 +721,8 @@
                 try {
                     requireConsent(); // Double-check consent
                     
-                    // Register this node with service worker
-                    if (navigator.serviceWorker.controller) {
+                    // Register this node with service worker if available
+                    if (navigator.serviceWorker && navigator.serviceWorker.controller) {
                         navigator.serviceWorker.controller.postMessage({
                             type: 'REGISTER_PEER',
                             data: {
@@ -636,6 +732,10 @@
                                 loadFactor: this.loadFactor
                             }
                         });
+                    } else {
+                        console.log('Service Worker not available, using fallback peer registration');
+                        // Fallback peer registration
+                        this.registerPeerFallback();
                     }
 
                     // Start peer discovery
@@ -644,7 +744,38 @@
                     this.emit('networkReady', { nodeId: this.nodeId });
                 } catch (error) {
                     console.error('Network initialization failed:', error);
+                    // Try fallback initialization
+                    this.initializeFallbackNetwork();
                 }
+            }
+            
+            // Fallback peer registration when Service Worker unavailable
+            registerPeerFallback() {
+                const peerInfo = {
+                    id: this.nodeId,
+                    vector: this.vector,
+                    timestamp: Date.now(),
+                    loadFactor: this.loadFactor,
+                    mode: 'fallback'
+                };
+                
+                try {
+                    sessionStorage.setItem('pss_peer_info', JSON.stringify(peerInfo));
+                    console.log('Peer registered in fallback mode');
+                } catch (error) {
+                    console.warn('Failed to register peer in fallback mode:', error);
+                }
+            }
+            
+            // Fallback network initialization
+            initializeFallbackNetwork() {
+                console.log('Initializing fallback network mode');
+                this.isOnline = true;
+                this.emit('networkReady', { 
+                    nodeId: this.nodeId, 
+                    mode: 'fallback',
+                    message: 'Running in compatibility mode'
+                });
             }
 
             // Discover peers via GitHub Pages coordination
@@ -805,12 +936,14 @@
                 // Distribute to optimal peers (simulated via localStorage)
                 this.distributeToPeers(prayer, optimalPeers);
                 
-                // Notify service worker
-                if (navigator.serviceWorker.controller) {
+                // Notify service worker if available
+                if (navigator.serviceWorker && navigator.serviceWorker.controller) {
                     navigator.serviceWorker.controller.postMessage({
                         type: 'STORE_PRAYER',
                         data: prayer
                     });
+                } else {
+                    console.log('Service Worker not available, prayer stored locally only');
                 }
                 
                 this.emit('prayerStored', prayer);
