@@ -986,32 +986,174 @@
                     retryAttempts: 3
                 };
 
+                this.userConfig = this.loadUserConfig();
+
                 console.log('🌌 Enhanced P2P Network initialized with Service Worker support');
             }
 
-            sanitizeEndpoints(endpoints) {
-                if (window.location.protocol === 'https:') {
-                    return endpoints.filter(endpoint => !endpoint.startsWith('http://'));
+            loadUserConfig() {
+                try {
+                    const stored = localStorage.getItem('pss_user_config');
+                    if (stored) {
+                        return this.sanitizeUserConfig(JSON.parse(stored));
+                    }
+                } catch (error) {
+                    console.warn('Failed to load user bootstrap config:', error);
                 }
+                return { nodeIp: '', neighborIp: '' };
+            }
+
+            sanitizeUserConfig(config) {
+                if (!config || typeof config !== 'object') {
+                    return { nodeIp: '', neighborIp: '' };
+                }
+
+                const sanitizeValue = (value) =>
+                    typeof value === 'string' ? value.trim() : '';
+
+                return {
+                    nodeIp: sanitizeValue(config.nodeIp),
+                    neighborIp: sanitizeValue(config.neighborIp)
+                };
+            }
+
+            persistUserConfig(config) {
+                try {
+                    const hasValues = config.nodeIp || config.neighborIp;
+                    if (hasValues) {
+                        localStorage.setItem('pss_user_config', JSON.stringify(config));
+                    } else {
+                        localStorage.removeItem('pss_user_config');
+                    }
+                } catch (error) {
+                    console.warn('Failed to persist user bootstrap config:', error);
+                }
+            }
+
+            generateUserEndpoints(address, defaultPaths = []) {
+                if (!address) return [];
+
+                const trimmed = address.trim();
+                if (!trimmed) return [];
+
+                const cleanBase = trimmed.replace(/\/+$/, '');
+                const bases = cleanBase.includes('://')
+                    ? [cleanBase]
+                    : [`http://${cleanBase}`, `https://${cleanBase}`];
+
+                const endpoints = [];
+                let hasExplicitPath = false;
+
+                try {
+                    const urlForCheck = cleanBase.includes('://') ? cleanBase : `http://${cleanBase}`;
+                    const parsed = new URL(urlForCheck);
+                    hasExplicitPath = parsed.pathname && parsed.pathname !== '/';
+                } catch (error) {
+                    hasExplicitPath = cleanBase.includes('/') && !cleanBase.endsWith('/');
+                }
+
+                for (const base of bases) {
+                    const sanitizedBase = base.replace(/\/+$/, '');
+
+                    if (hasExplicitPath || !defaultPaths || defaultPaths.length === 0) {
+                        endpoints.push(sanitizedBase);
+                    } else {
+                        defaultPaths.forEach(path => {
+                            endpoints.push(`${sanitizedBase}${path}`);
+                        });
+                    }
+                }
+
                 return endpoints;
             }
 
+            async updateUserConfig(config) {
+                const previous = this.userConfig || { nodeIp: '', neighborIp: '' };
+                const sanitized = this.sanitizeUserConfig(config);
+                const changed = sanitized.nodeIp !== previous.nodeIp ||
+                    sanitized.neighborIp !== previous.neighborIp;
+
+                this.userConfig = sanitized;
+                this.persistUserConfig(sanitized);
+
+                if (!changed) {
+                    return sanitized;
+                }
+
+                if (sanitized.nodeIp || sanitized.neighborIp) {
+                    this.debug('🌐 Custom bootstrap hints applied', 'info');
+                    this.showToast('🌐 Custom bootstrap hints applied');
+                } else {
+                    this.debug('🌐 Cleared custom bootstrap hints', 'info');
+                    this.showToast('🌐 Cleared bootstrap hints');
+                }
+
+                try {
+                    this.announceToNetwork().catch(error => {
+                        console.warn('Bootstrap re-announcement failed:', error);
+                    });
+                    this.searchGlobalNode().catch(error => {
+                        console.warn('Bootstrap discovery failed:', error);
+                    });
+                } catch (error) {
+                    console.warn('Failed to trigger bootstrap refresh:', error);
+                }
+
+                return sanitized;
+            }
+
+            sanitizeEndpoints(endpoints) {
+                const filtered = [];
+                const seen = new Set();
+
+                for (const endpoint of endpoints) {
+                    if (!endpoint || typeof endpoint !== 'string') continue;
+                    const trimmed = endpoint.trim();
+                    if (!trimmed) continue;
+
+                    if (window.location.protocol === 'https:' && trimmed.startsWith('http://')) {
+                        continue;
+                    }
+
+                    if (!seen.has(trimmed)) {
+                        filtered.push(trimmed);
+                        seen.add(trimmed);
+                    }
+                }
+
+                return filtered;
+            }
+
             getGlobalAnnouncementEndpoints() {
-                return this.sanitizeEndpoints([
+                const defaultEndpoints = [
                     `http://185.187.243.129:3000/api/announce`,
                     `https://185.187.243.129:3001/api/announce`,
                     `http://185.187.243.129:8080/peers/announce`,
                     'https://httpbin.org/post',
                     'https://postman-echo.com/post'
-                ]);
+                ];
+
+                const userEndpoints = [
+                    ...this.generateUserEndpoints(this.userConfig.nodeIp, ['/api/announce', '/peers/announce']),
+                    ...this.generateUserEndpoints(this.userConfig.neighborIp, ['/api/announce', '/peers/announce'])
+                ];
+
+                return this.sanitizeEndpoints([...defaultEndpoints, ...userEndpoints]);
             }
 
             getGlobalPeerEndpoints() {
-                return this.sanitizeEndpoints([
+                const defaultEndpoints = [
                     `http://185.187.243.129:3000/api/peers`,
                     `https://185.187.243.129:3001/api/peers`,
                     `http://185.187.243.129:8080/peers/list`
-                ]);
+                ];
+
+                const userEndpoints = [
+                    ...this.generateUserEndpoints(this.userConfig.nodeIp, ['/api/peers', '/peers/list']),
+                    ...this.generateUserEndpoints(this.userConfig.neighborIp, ['/api/peers', '/peers/list'])
+                ];
+
+                return this.sanitizeEndpoints([...defaultEndpoints, ...userEndpoints]);
             }
 
             generateAdvancedId() {
@@ -1136,7 +1278,8 @@
                                         nodeId: this.nodeId,
                                         timestamp: Date.now(),
                                         features: ['enhanced-p2p', 'webrtc', 'indexeddb'],
-                                        version: '2.1'
+                                        version: '2.1',
+                                        bootstrapHints: this.userConfig
                                     }
                                 });
                                 
@@ -1473,6 +1616,7 @@
                     capabilities: this.networkConfig,
                     origin: window.location.origin,
                     userAgent: navigator.userAgent.split(')')[0] + ')', // Partial UA for identification
+                    bootstrapHints: this.userConfig
                 };
                 
                 console.log('🔥 Announcement payload:', JSON.stringify(announcement, null, 2));
@@ -2408,6 +2552,48 @@ Issued At: ${issuedAt}`;
         function EnhancedCompleteApplication() {
             const { useState, useEffect, useCallback, useMemo, useRef } = React;
 
+            function getStoredBootstrapConfig() {
+                try {
+                    const stored = localStorage.getItem('pss_user_config');
+                    if (stored) {
+                        return sanitizeBootstrapConfig(JSON.parse(stored));
+                    }
+                } catch (error) {
+                    console.warn('Failed to load stored bootstrap config:', error);
+                }
+                return { nodeIp: '', neighborIp: '' };
+            }
+
+            function sanitizeBootstrapConfig(config) {
+                if (!config || typeof config !== 'object') {
+                    return { nodeIp: '', neighborIp: '' };
+                }
+
+                const sanitizeValue = (value) =>
+                    typeof value === 'string' ? value.trim() : '';
+
+                return {
+                    nodeIp: sanitizeValue(config.nodeIp),
+                    neighborIp: sanitizeValue(config.neighborIp)
+                };
+            }
+
+            function persistBootstrapConfig(config) {
+                const sanitized = sanitizeBootstrapConfig(config);
+
+                try {
+                    if (sanitized.nodeIp || sanitized.neighborIp) {
+                        localStorage.setItem('pss_user_config', JSON.stringify(sanitized));
+                    } else {
+                        localStorage.removeItem('pss_user_config');
+                    }
+                } catch (error) {
+                    console.warn('Failed to persist bootstrap config:', error);
+                }
+
+                return sanitized;
+            }
+
             // Enhanced State Management
             const [user, setUser] = useState(null);
             const [network, setNetwork] = useState(null);
@@ -2426,7 +2612,11 @@ Issued At: ${issuedAt}`;
             const [connectionQuality, setConnectionQuality] = useState('Initializing...');
             const networkRef = useRef(null);
             const [peerDisplay, setPeerDisplay] = useState([]);
-            
+            const storedBootstrapConfig = useMemo(() => getStoredBootstrapConfig(), []);
+            const [userConfig, setUserConfig] = useState(storedBootstrapConfig);
+            const [configDraft, setConfigDraft] = useState(storedBootstrapConfig);
+            const [configSaving, setConfigSaving] = useState(false);
+
             const [newPrayer, setNewPrayer] = useState({
                 title: '', content: '', location: '', urgency: 'medium',
                 category: 'general', needsAmount: '', walletAddress: '', tags: ''
@@ -2476,7 +2666,11 @@ Issued At: ${issuedAt}`;
                         const networkSystem = new AdvancedP2PNetwork();
                         networkRef.current = networkSystem;
                         setNetwork(networkSystem);
-                        
+
+                        const bootstrapConfig = sanitizeBootstrapConfig(networkSystem.userConfig || {});
+                        setUserConfig(bootstrapConfig);
+                        setConfigDraft(bootstrapConfig);
+
                         setInitStatus('📡 Configuring enhanced routing protocols...');
                         
                         // Enhanced event listeners
@@ -2740,6 +2934,68 @@ Issued At: ${issuedAt}`;
                 }
             }, []);
 
+            const handleConfigSave = useCallback(async () => {
+                if (configSaving) return;
+
+                const sanitized = sanitizeBootstrapConfig(configDraft);
+                setConfigSaving(true);
+
+                try {
+                    let applied = sanitized;
+
+                    if (networkRef.current && typeof networkRef.current.updateUserConfig === 'function') {
+                        applied = await networkRef.current.updateUserConfig(sanitized);
+                    } else {
+                        applied = persistBootstrapConfig(sanitized);
+                    }
+
+                    setUserConfig(applied);
+                    setConfigDraft(applied);
+
+                    if (networkRef.current) {
+                        networkRef.current.showToast('💾 Bootstrap hints saved');
+                    }
+                } catch (error) {
+                    console.error('Failed to save bootstrap config:', error);
+                    if (networkRef.current) {
+                        networkRef.current.showToast('❌ Failed to save bootstrap hints');
+                    }
+                } finally {
+                    setConfigSaving(false);
+                }
+            }, [configDraft, configSaving]);
+
+            const handleConfigReset = useCallback(async () => {
+                if (configSaving) return;
+
+                const cleared = { nodeIp: '', neighborIp: '' };
+                setConfigSaving(true);
+
+                try {
+                    let applied = cleared;
+
+                    if (networkRef.current && typeof networkRef.current.updateUserConfig === 'function') {
+                        applied = await networkRef.current.updateUserConfig(cleared);
+                    } else {
+                        applied = persistBootstrapConfig(cleared);
+                    }
+
+                    setUserConfig(applied);
+                    setConfigDraft(applied);
+
+                    if (networkRef.current) {
+                        networkRef.current.showToast('🧹 Cleared bootstrap hints');
+                    }
+                } catch (error) {
+                    console.error('Failed to clear bootstrap config:', error);
+                    if (networkRef.current) {
+                        networkRef.current.showToast('❌ Failed to clear bootstrap hints');
+                    }
+                } finally {
+                    setConfigSaving(false);
+                }
+            }, [configSaving]);
+
             // Enhanced prayer submission with advanced features
             const submitPrayer = useCallback(async () => {
                 if (!user || !newPrayer.title.trim() || !newPrayer.content.trim()) {
@@ -2883,7 +3139,7 @@ Issued At: ${issuedAt}`;
             // Performance metrics component
             const performanceMetrics = useMemo(() => {
                 if (!networkRef.current || !showPerformance) return null;
-                
+
                 const history = networkRef.current.getPerformanceHistory();
                 const recent = history.slice(-10); // Last 10 measurements
                 
@@ -2936,6 +3192,63 @@ Issued At: ${issuedAt}`;
                 );
             }, [networkStats, showPerformance, prayers.length]);
 
+            const userConfigCard = React.createElement('div', { className: 'card', style: { marginTop: '20px' } },
+                React.createElement('h3', { style: { marginBottom: '15px', color: '#2c3e50' } }, '🧭 Bootstrap Configuration'),
+                React.createElement('p', { style: { fontSize: '14px', color: '#555', marginBottom: '20px' } },
+                    'Share optional IP or endpoint hints to help nearby volunteers connect faster. Provide your reachable address and a trusted neighbor to strengthen discovery.'
+                ),
+                React.createElement('div', { className: 'feature-grid' },
+                    React.createElement('div', { className: 'form-group' },
+                        React.createElement('label', null, 'Your Node IP or Endpoint'),
+                        React.createElement('input', {
+                            type: 'text',
+                            value: configDraft.nodeIp,
+                            onChange: (e) => setConfigDraft(prev => ({ ...prev, nodeIp: e.target.value })),
+                            placeholder: 'e.g. 203.0.113.10:3000 or https://node.example.com'
+                        }),
+                        React.createElement('small', { style: { display: 'block', marginTop: '8px', color: '#777' } },
+                            'We will share this in announcements so others can reach you directly.'
+                        )
+                    ),
+                    React.createElement('div', { className: 'form-group' },
+                        React.createElement('label', null, 'Neighbor Node IP or Endpoint'),
+                        React.createElement('input', {
+                            type: 'text',
+                            value: configDraft.neighborIp,
+                            onChange: (e) => setConfigDraft(prev => ({ ...prev, neighborIp: e.target.value })),
+                            placeholder: 'e.g. 198.51.100.25:8080 or http://ally.example.net/peers'
+                        }),
+                        React.createElement('small', { style: { display: 'block', marginTop: '8px', color: '#777' } },
+                            'Used as an additional rendezvous target during discovery cycles.'
+                        )
+                    )
+                ),
+                React.createElement('div', { className: 'network-controls', style: { marginTop: '20px' } },
+                    React.createElement('button', {
+                        onClick: handleConfigSave,
+                        className: 'btn btn-secondary',
+                        disabled: configSaving
+                    },
+                        configSaving ? React.createElement('span', { className: 'loading' }) : null,
+                        configSaving ? ' Saving...' : '💾 Save Bootstrap Hints'
+                    ),
+                    React.createElement('button', {
+                        onClick: handleConfigReset,
+                        className: 'btn',
+                        disabled: configSaving,
+                        style: { background: '#666' }
+                    }, '🧹 Clear Hints')
+                ),
+                React.createElement('div', { style: { marginTop: '15px', fontSize: '12px', color: '#666' } },
+                    userConfig.nodeIp || userConfig.neighborIp
+                        ? `Active hints → You: ${userConfig.nodeIp || '—'}${userConfig.neighborIp ? ' • Neighbor: ' + userConfig.neighborIp : ''}`
+                        : 'No custom hints saved yet. The network will rely on default rendezvous nodes.'
+                ),
+                React.createElement('div', { style: { marginTop: '10px', fontSize: '11px', color: '#888' } },
+                    'HTTPS pages will ignore insecure (http://) hints for safety.'
+                )
+            );
+
             // Show enhanced initialization screen
             if (!isNetworkReady) {
                 return React.createElement('div', { className: 'container' },
@@ -2981,15 +3294,16 @@ Issued At: ${issuedAt}`;
                                     console.log('User consent:', userConsent);
                                     console.log('Service Worker ready:', networkRef.current ? networkRef.current.serviceWorkerReady : 'N/A');
                                 },
-                                className: 'btn',
-                                style: { background: '#9c27b0' }
-                            }, '🔬 Debug Console')
-                        )
-                    ),
-                    React.createElement('div', { className: 'card' },
-                        React.createElement('h3', { style: { color: '#2c3e50' } }, '🌐 Enhanced Network Status'),
-                        React.createElement('div', { className: 'feature-grid' },
-                            React.createElement('div', null,
+                            className: 'btn',
+                            style: { background: '#9c27b0' }
+                        }, '🔬 Debug Console')
+                    )
+                ),
+                userConfigCard,
+                React.createElement('div', { className: 'card' },
+                    React.createElement('h3', { style: { color: '#2c3e50' } }, '🌐 Enhanced Network Status'),
+                    React.createElement('div', { className: 'feature-grid' },
+                        React.createElement('div', null,
                                 React.createElement('strong', null, 'Algorithm: '), 'Enhanced P2P v2.1'
                             ),
                             React.createElement('div', null,
@@ -3022,6 +3336,8 @@ Issued At: ${issuedAt}`;
                             'Your browser connects directly to a global enhanced mesh via WebRTC with Service Worker coordination.'
                         )
                     ),
+
+                    userConfigCard,
 
                     React.createElement('div', { className: 'stats-bar' },
                         React.createElement('div', { className: 'stat' },
@@ -3285,6 +3601,8 @@ ${peersInfo.length > 5 ? '...' : ''}`);
                         React.createElement('span', { className: 'stat-label' }, 'Global Network')
                     )
                 ),
+
+                userConfigCard,
 
                 showDebug && React.createElement('div', { className: 'p2p-debug', style: { display: 'block' } },
                     React.createElement('div', { style: { color: '#fff', marginBottom: '15px', borderBottom: '1px solid #333', paddingBottom: '8px' } },
