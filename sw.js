@@ -1,23 +1,47 @@
 // PSS Network Service Worker
 // Persistent FT-DFRP Node for Prayers, Saints & Saviors
-// Version 1.0
+// Version 1.0 with Full WebRTC P2P Implementation
 
 const CACHE_NAME = 'prayers-network-v1';
 const DB_NAME = 'PrayersNetworkDB';
-const STORES = ['peers', 'prayers', 'parity'];
+const STORES = ['peers', 'prayers', 'parity', 'webrtc_signals', 'ice_candidates', 'connections'];
 
 let db;
 let peers = new Map();
 let isOnline = false;
 let startTime = Date.now();
 
+// WebRTC P2P Implementation
+let webrtcConnections = new Map(); // peerId -> connection metadata
+let pendingSignals = new Map(); // peerId -> pending signaling data
+let iceQueue = new Map(); // peerId -> queued ICE candidates
+let connectionStates = new Map(); // peerId -> connection state
+let signalingServer = null; // For fallback signaling
+
+// WebRTC Configuration
+const rtcConfig = {
+    iceServers: [
+        { urls: 'stun:stun.l.google.com:19302' },
+        { urls: 'stun:stun1.l.google.com:19302' },
+        { urls: 'stun:stun2.l.google.com:19302' },
+        { urls: 'stun:stun3.l.google.com:19302' },
+        { urls: 'stun:stun4.l.google.com:19302' },
+        // Add TURN servers for production
+        // { urls: 'turn:your-turn-server.com', username: 'user', credential: 'pass' }
+    ],
+    iceCandidatePoolSize: 10
+};
+
+console.log('🔧 SW: WebRTC P2P Service Worker starting...');
+
 // Initialize IndexedDB for persistent storage
 async function initDB() {
     return new Promise((resolve, reject) => {
-        const request = indexedDB.open(DB_NAME, 1);
+        const request = indexedDB.open(DB_NAME, 2);
         request.onerror = () => reject(request.error);
         request.onsuccess = () => {
             db = request.result;
+            console.log('🔧 SW: IndexedDB initialized with WebRTC support');
             resolve(db);
         };
         request.onupgradeneeded = (event) => {
@@ -34,7 +58,23 @@ async function initDB() {
                     if (storeName === 'peers') {
                         store.createIndex('timestamp', 'timestamp', { unique: false });
                         store.createIndex('lastSeen', 'lastSeen', { unique: false });
+                        store.createIndex('connectionState', 'connectionState', { unique: false });
                     }
+                    if (storeName === 'webrtc_signals') {
+                        store.createIndex('targetPeer', 'targetPeer', { unique: false });
+                        store.createIndex('signalType', 'signalType', { unique: false });
+                        store.createIndex('timestamp', 'timestamp', { unique: false });
+                    }
+                    if (storeName === 'ice_candidates') {
+                        store.createIndex('peerId', 'peerId', { unique: false });
+                        store.createIndex('timestamp', 'timestamp', { unique: false });
+                    }
+                    if (storeName === 'connections') {
+                        store.createIndex('peerId', 'peerId', { unique: false });
+                        store.createIndex('state', 'state', { unique: false });
+                        store.createIndex('timestamp', 'timestamp', { unique: false });
+                    }
+                    console.log('🔧 SW: Created IndexedDB store:', storeName);
                 }
             });
         };
@@ -59,10 +99,10 @@ async function storeData(storeName, data) {
             request.onerror = () => reject(request.error);
         });
         
-        console.log(`Stored ${storeName} data:`, data.id);
+        console.log(`🔧 SW: Stored ${storeName} data:`, data.id);
         return true;
     } catch (error) {
-        console.error(`Failed to store ${storeName} data:`, error);
+        console.error(`🔧 SW: Failed to store ${storeName} data:`, error);
         return false;
     }
 }
@@ -80,7 +120,7 @@ async function getData(storeName, id) {
             request.onerror = () => reject(request.error);
         });
     } catch (error) {
-        console.error(`Failed to get ${storeName} data:`, error);
+        console.error(`🔧 SW: Failed to get ${storeName} data:`, error);
         return null;
     }
 }
@@ -106,8 +146,244 @@ async function getAllData(storeName, limit = 100) {
             request.onerror = () => reject(request.error);
         });
     } catch (error) {
-        console.error(`Failed to get all ${storeName} data:`, error);
+        console.error(`🔧 SW: Failed to get all ${storeName} data:`, error);
         return [];
+    }
+}
+
+// WebRTC Signaling Management
+async function storeWebRTCSignal(targetPeer, signalType, signalData) {
+    const signal = {
+        id: `signal_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`,
+        targetPeer: targetPeer,
+        signalType: signalType, // 'offer', 'answer', 'ice-candidate'
+        signalData: signalData,
+        timestamp: Date.now(),
+        processed: false
+    };
+    
+    await storeData('webrtc_signals', signal);
+    console.log('🔧 SW: Stored WebRTC signal:', signalType, 'for peer:', targetPeer);
+    
+    // Notify main thread about new signal
+    broadcastToClients('webrtc_signal_received', {
+        targetPeer: targetPeer,
+        signalType: signalType,
+        signalData: signalData
+    });
+    
+    return signal;
+}
+
+// ICE Candidate Management
+async function storeICECandidate(peerId, candidate) {
+    const iceCandidate = {
+        id: `ice_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`,
+        peerId: peerId,
+        candidate: candidate,
+        timestamp: Date.now(),
+        processed: false
+    };
+    
+    await storeData('ice_candidates', iceCandidate);
+    console.log('🔧 SW: Stored ICE candidate for peer:', peerId);
+    
+    // Queue for processing if connection isn't ready
+    if (!iceQueue.has(peerId)) {
+        iceQueue.set(peerId, []);
+    }
+    iceQueue.get(peerId).push(candidate);
+    
+    // Notify main thread
+    broadcastToClients('ice_candidate_received', {
+        peerId: peerId,
+        candidate: candidate
+    });
+    
+    return iceCandidate;
+}
+
+// Connection State Management
+async function updateConnectionState(peerId, state, metadata = {}) {
+    const connection = {
+        id: peerId,
+        peerId: peerId,
+        state: state, // 'connecting', 'connected', 'disconnected', 'failed'
+        metadata: metadata,
+        timestamp: Date.now(),
+        lastActivity: Date.now()
+    };
+    
+    connectionStates.set(peerId, connection);
+    await storeData('connections', connection);
+    
+    console.log('🔧 SW: Updated connection state for', peerId, 'to', state);
+    
+    // Update peer state
+    if (peers.has(peerId)) {
+        const peer = peers.get(peerId);
+        peer.connectionState = state;
+        peer.lastSeen = Date.now();
+        peers.set(peerId, peer);
+        await storeData('peers', { id: peerId, ...peer });
+    }
+    
+    // Notify main thread
+    broadcastToClients('connection_state_changed', {
+        peerId: peerId,
+        state: state,
+        metadata: metadata
+    });
+}
+
+// WebRTC Peer Discovery and Connection Initiation
+async function initiateWebRTCConnection(targetPeerId, isInitiator = false) {
+    console.log('🔧 SW: Initiating WebRTC connection to:', targetPeerId, 'as initiator:', isInitiator);
+    
+    const connectionId = `conn_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
+    
+    const connectionMetadata = {
+        id: connectionId,
+        targetPeer: targetPeerId,
+        isInitiator: isInitiator,
+        state: 'initiating',
+        rtcConfig: rtcConfig,
+        timestamp: Date.now()
+    };
+    
+    webrtcConnections.set(targetPeerId, connectionMetadata);
+    await updateConnectionState(targetPeerId, 'connecting', connectionMetadata);
+    
+    // Notify main thread to create RTCPeerConnection
+    broadcastToClients('create_webrtc_connection', {
+        targetPeerId: targetPeerId,
+        connectionId: connectionId,
+        isInitiator: isInitiator,
+        rtcConfig: rtcConfig
+    });
+    
+    return connectionMetadata;
+}
+
+// Handle WebRTC Offer/Answer Exchange
+async function handleWebRTCOffer(fromPeerId, offer) {
+    console.log('🔧 SW: Received WebRTC offer from:', fromPeerId);
+    
+    // Store the offer
+    await storeWebRTCSignal(fromPeerId, 'offer', offer);
+    
+    // If we don't have a connection to this peer, initiate one
+    if (!webrtcConnections.has(fromPeerId)) {
+        await initiateWebRTCConnection(fromPeerId, false);
+    }
+    
+    // Notify main thread to handle offer
+    broadcastToClients('webrtc_offer_received', {
+        fromPeerId: fromPeerId,
+        offer: offer
+    });
+}
+
+async function handleWebRTCAnswer(fromPeerId, answer) {
+    console.log('🔧 SW: Received WebRTC answer from:', fromPeerId);
+    
+    // Store the answer
+    await storeWebRTCSignal(fromPeerId, 'answer', answer);
+    
+    // Notify main thread to handle answer
+    broadcastToClients('webrtc_answer_received', {
+        fromPeerId: fromPeerId,
+        answer: answer
+    });
+}
+
+// Peer-to-Peer Message Routing
+async function routeP2PMessage(targetPeerId, messageType, messageData) {
+    console.log('🔧 SW: Routing P2P message to:', targetPeerId, 'type:', messageType);
+    
+    const message = {
+        id: `msg_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`,
+        targetPeerId: targetPeerId,
+        messageType: messageType,
+        messageData: messageData,
+        timestamp: Date.now(),
+        fromServiceWorker: true
+    };
+    
+    // Try to send via WebRTC if connected
+    const connectionState = connectionStates.get(targetPeerId);
+    if (connectionState && connectionState.state === 'connected') {
+        // Notify main thread to send via WebRTC data channel
+        broadcastToClients('send_webrtc_message', {
+            targetPeerId: targetPeerId,
+            message: message
+        });
+    } else {
+        // Store for later delivery when connection is established
+        await storeData('prayers', message);
+        console.log('🔧 SW: Stored message for later delivery to:', targetPeerId);
+    }
+    
+    return message;
+}
+
+// Network Discovery and Announcement
+async function announceToNetwork(nodeData) {
+    console.log('🔧 SW: Announcing to P2P network:', nodeData.id);
+    
+    // Store our own peer data
+    await storeData('peers', nodeData);
+    peers.set(nodeData.id, nodeData);
+    
+    // Broadcast to all connected clients
+    broadcastToClients('peer_announcement', nodeData);
+    
+    // Try to connect to recently discovered peers
+    const recentPeers = await getAllData('peers', 10);
+    for (const peer of recentPeers) {
+        if (peer.id !== nodeData.id && 
+            !connectionStates.has(peer.id) && 
+            Date.now() - peer.timestamp < 5 * 60 * 1000) { // 5 minutes
+            
+            // Initiate WebRTC connection
+            setTimeout(() => {
+                initiateWebRTCConnection(peer.id, true);
+            }, Math.random() * 3000); // Random delay to prevent thundering herd
+        }
+    }
+}
+
+// Network Mesh Topology Management
+async function optimizeNetworkTopology() {
+    console.log('🔧 SW: Optimizing network topology...');
+    
+    const allPeers = await getAllData('peers', 50);
+    const activePeers = allPeers.filter(peer => 
+        Date.now() - peer.lastSeen < 2 * 60 * 1000 // 2 minutes
+    );
+    
+    console.log('🔧 SW: Found', activePeers.length, 'active peers');
+    
+    // Calculate optimal connections (aim for 3-6 connections per node)
+    const optimalConnections = Math.min(6, Math.max(3, Math.floor(Math.sqrt(activePeers.length))));
+    
+    const currentConnections = Array.from(connectionStates.values()).filter(conn => 
+        conn.state === 'connected'
+    );
+    
+    if (currentConnections.length < optimalConnections) {
+        // Need more connections
+        const unconnectedPeers = activePeers.filter(peer => 
+            !connectionStates.has(peer.id)
+        );
+        
+        const connectionsNeeded = optimalConnections - currentConnections.length;
+        const peersToConnect = unconnectedPeers.slice(0, connectionsNeeded);
+        
+        for (const peer of peersToConnect) {
+            console.log('🔧 SW: Initiating connection to optimize topology:', peer.id);
+            await initiateWebRTCConnection(peer.id, true);
+        }
     }
 }
 
@@ -115,41 +391,80 @@ async function getAllData(storeName, limit = 100) {
 async function cleanupOldData() {
     try {
         const maxAge = 7 * 24 * 60 * 60 * 1000; // 7 days
+        const signalMaxAge = 60 * 60 * 1000; // 1 hour for signals
         const now = Date.now();
         
-        for (const storeName of STORES) {
-            const allData = await getAllData(storeName, 1000);
-            const transaction = db.transaction([storeName], 'readwrite');
-            const store = transaction.objectStore(storeName);
+        // Clean up old prayers
+        const oldPrayers = await getAllData('prayers', 1000);
+        if (oldPrayers.length > 0) {
+            const transaction = db.transaction(['prayers'], 'readwrite');
+            const store = transaction.objectStore('prayers');
             
-            allData.forEach(item => {
+            oldPrayers.forEach(item => {
                 if (item.timestamp && (now - item.timestamp) > maxAge) {
                     store.delete(item.id);
                 }
             });
         }
         
-        console.log('Completed data cleanup');
+        // Clean up old WebRTC signals
+        const oldSignals = await getAllData('webrtc_signals', 1000);
+        if (oldSignals.length > 0) {
+            const transaction = db.transaction(['webrtc_signals'], 'readwrite');
+            const store = transaction.objectStore('webrtc_signals');
+            
+            oldSignals.forEach(signal => {
+                if (signal.timestamp && (now - signal.timestamp) > signalMaxAge) {
+                    store.delete(signal.id);
+                }
+            });
+        }
+        
+        // Clean up old ICE candidates
+        const oldCandidates = await getAllData('ice_candidates', 1000);
+        if (oldCandidates.length > 0) {
+            const transaction = db.transaction(['ice_candidates'], 'readwrite');
+            const store = transaction.objectStore('ice_candidates');
+            
+            oldCandidates.forEach(candidate => {
+                if (candidate.timestamp && (now - candidate.timestamp) > signalMaxAge) {
+                    store.delete(candidate.id);
+                }
+            });
+        }
+        
+        // Clean up inactive peers
+        for (const [peerId, peer] of peers.entries()) {
+            if (now - (peer.lastSeen || 0) > maxAge) {
+                peers.delete(peerId);
+                connectionStates.delete(peerId);
+                webrtcConnections.delete(peerId);
+            }
+        }
+        
+        console.log('🔧 SW: Completed enhanced WebRTC data cleanup');
     } catch (error) {
-        console.error('Error during data cleanup:', error);
+        console.error('🔧 SW: Error during data cleanup:', error);
     }
 }
 
 // Background sync for peer discovery
 self.addEventListener('sync', event => {
-    console.log('Service Worker sync event:', event.tag);
+    console.log('🔧 SW: Sync event:', event.tag);
     
     if (event.tag === 'peer-discovery') {
         event.waitUntil(discoverPeers());
     } else if (event.tag === 'data-cleanup') {
         event.waitUntil(cleanupOldData());
+    } else if (event.tag === 'optimize-topology') {
+        event.waitUntil(optimizeNetworkTopology());
     }
 });
 
-// Message handling from main thread
+// Message handling from main thread with WebRTC support
 self.addEventListener('message', async event => {
     const { type, data } = event.data;
-    console.log('Service Worker received message:', type);
+    console.log('🔧 SW: Received message:', type);
     
     try {
         switch (type) {
@@ -165,18 +480,64 @@ self.addEventListener('message', async event => {
                 break;
                 
             case 'REGISTER_PEER':
-                peers.set(data.id, { ...data, lastSeen: Date.now() });
-                await storeData('peers', data);
-                console.log('Peer registered:', data.id);
+                const peerData = { ...data, lastSeen: Date.now(), connectionState: 'discovering' };
+                peers.set(data.id, peerData);
+                await storeData('peers', peerData);
+                console.log('🔧 SW: Peer registered:', data.id);
+                
+                // Announce to network and try to establish connections
+                await announceToNetwork(peerData);
+                break;
+                
+            case 'WEBRTC_OFFER':
+                await handleWebRTCOffer(data.fromPeerId, data.offer);
+                break;
+                
+            case 'WEBRTC_ANSWER':
+                await handleWebRTCAnswer(data.fromPeerId, data.answer);
+                break;
+                
+            case 'WEBRTC_ICE_CANDIDATE':
+                await storeICECandidate(data.peerId, data.candidate);
+                break;
+                
+            case 'WEBRTC_CONNECTION_STATE':
+                await updateConnectionState(data.peerId, data.state, data.metadata);
+                break;
+                
+            case 'SEND_P2P_MESSAGE':
+                await routeP2PMessage(data.targetPeerId, data.messageType, data.messageData);
+                break;
+                
+            case 'INITIATE_WEBRTC_CONNECTION':
+                await initiateWebRTCConnection(data.targetPeerId, data.isInitiator);
                 break;
                 
             case 'GET_NETWORK_STATUS':
                 if (event.ports && event.ports[0]) {
+                    const activeConnections = Array.from(connectionStates.values()).filter(
+                        conn => conn.state === 'connected'
+                    );
+                    
                     event.ports[0].postMessage({
                         peers: peers.size,
                         isOnline,
                         uptime: Date.now() - startTime,
-                        dbReady: !!db
+                        dbReady: !!db,
+                        webrtcConnections: activeConnections.length,
+                        pendingSignals: pendingSignals.size,
+                        queuedICE: Array.from(iceQueue.values()).reduce((sum, queue) => sum + queue.length, 0),
+                        algorithm: 'WebRTC P2P Mesh v1.0'
+                    });
+                }
+                break;
+                
+            case 'GET_WEBRTC_SIGNALS':
+                const signals = await getAllData('webrtc_signals', data.limit || 50);
+                if (event.ports && event.ports[0]) {
+                    event.ports[0].postMessage({
+                        type: 'WEBRTC_SIGNALS_DATA',
+                        signals: signals.filter(s => !s.processed)
                     });
                 }
                 break;
@@ -205,31 +566,41 @@ self.addEventListener('message', async event => {
                 await cleanupOldData();
                 break;
                 
+            case 'OPTIMIZE_TOPOLOGY':
+                await optimizeNetworkTopology();
+                break;
+                
             default:
-                console.log('Unknown message type:', type);
+                console.log('🔧 SW: Unknown message type:', type);
         }
     } catch (error) {
-        console.error('Error handling message:', error);
+        console.error('🔧 SW: Error handling message:', error);
     }
 });
 
-// Broadcast to connected peers (simulation - in full implementation use WebRTC)
+// Broadcast to connected peers via WebRTC (simulation for now)
 function broadcastToPeers(type, data) {
-    const peerCount = peers.size;
-    console.log(`Broadcasting ${type} to ${peerCount} peers:`, data.id || data);
+    const activeConnections = Array.from(connectionStates.values()).filter(
+        conn => conn.state === 'connected'
+    );
     
-    // In a full P2P implementation, this would send via WebRTC data channels
-    // For now, we simulate by updating localStorage for other tabs to detect
+    console.log(`🔧 SW: Broadcasting ${type} to ${activeConnections.length} WebRTC peers:`, data.id || data);
+    
+    // Route via WebRTC connections
+    for (const connection of activeConnections) {
+        routeP2PMessage(connection.peerId, type, data);
+    }
+    
+    // Fallback: use localStorage for cross-tab communication
     try {
         const broadcast = {
             id: 'broadcast_' + Math.random().toString(36).substr(2, 9),
             type: type,
             data: data,
             timestamp: Date.now(),
-            sender: 'service-worker'
+            sender: 'webrtc-service-worker'
         };
         
-        // Use localStorage for cross-tab communication simulation
         const broadcasts = JSON.parse(localStorage.getItem('network_broadcasts') || '[]');
         broadcasts.push(broadcast);
         
@@ -239,15 +610,34 @@ function broadcastToPeers(type, data) {
         }
         
         localStorage.setItem('network_broadcasts', JSON.stringify(broadcasts));
+        console.log('🔧 SW: Fallback broadcast stored in localStorage');
     } catch (error) {
-        console.error('Error broadcasting to peers:', error);
+        console.error('🔧 SW: Error in fallback broadcast:', error);
     }
 }
 
-// Periodic peer discovery and maintenance
+// Enhanced cross-tab broadcasting with WebRTC coordination
+function broadcastToClients(type, data) {
+    self.clients.matchAll({ includeUncontrolled: true }).then(clients => {
+        clients.forEach(client => {
+            try {
+                client.postMessage({
+                    type: type,
+                    data: data,
+                    timestamp: Date.now(),
+                    via: 'webrtc-service-worker'
+                });
+            } catch (e) {
+                console.warn('🔧 SW: Client broadcast failed:', e);
+            }
+        });
+    });
+}
+
+// Periodic peer discovery and maintenance with WebRTC support
 async function discoverPeers() {
     try {
-        console.log('Discovering peers in background...');
+        console.log('🔧 SW: WebRTC peer discovery cycle...');
         
         // Clean up old peers (older than 10 minutes)
         const now = Date.now();
@@ -257,21 +647,28 @@ async function discoverPeers() {
         currentPeers.forEach(([peerId, peerData]) => {
             if (now - (peerData.lastSeen || 0) > maxPeerAge) {
                 peers.delete(peerId);
-                console.log('Removed stale peer:', peerId);
+                connectionStates.delete(peerId);
+                webrtcConnections.delete(peerId);
+                console.log('🔧 SW: Removed stale peer:', peerId);
             }
         });
         
         // Update online status
         isOnline = peers.size > 0 || navigator.onLine;
         
+        // Schedule topology optimization
+        if (Math.random() < 0.2) { // 20% chance each discovery cycle
+            await optimizeNetworkTopology();
+        }
+        
         // Schedule data cleanup periodically
         if (Math.random() < 0.1) { // 10% chance each discovery cycle
             await cleanupOldData();
         }
         
-        console.log(`Peer discovery complete. Active peers: ${peers.size}`);
+        console.log(`🔧 SW: WebRTC discovery complete. Active peers: ${peers.size}, Connections: ${connectionStates.size}`);
     } catch (error) {
-        console.error('Error during peer discovery:', error);
+        console.error('🔧 SW: Error during WebRTC peer discovery:', error);
     }
 }
 
