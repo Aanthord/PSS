@@ -639,7 +639,7 @@
             <div class="modal-body">
                 <p style="margin-bottom: 25px; line-height: 1.7; font-size: 16px;">
                     You're about to become part of a advanced global infrastructure that uses cutting-edge 
-                    advanced P2P algorithms and WebRTC mesh networking to coordinate humanitarian aid with 
+                    P2P algorithms and WebRTC mesh networking to coordinate humanitarian aid with 
                     unprecedented efficiency. Please understand what you're agreeing to.
                 </p>
 
@@ -676,7 +676,7 @@
                     <p style="margin-bottom: 15px; line-height: 1.6;">
                         By proceeding, you agree to our comprehensive legal framework:
                     </p>
-                    <a href="https://pinnacle-advanced.org/pss/terms" target="_blank" style="color: var(--info); text-decoration: none; font-weight: 700; display: inline-flex; align-items: center; gap: 8px;">
+                    <a href="https://pinnacle-quantum.org/pss/terms" target="_blank" style="color: var(--info); text-decoration: none; font-weight: 700; display: inline-flex; align-items: center; gap: 8px;">
                         📋 Complete Terms of Service & Privacy Policy
                         <span style="font-size: 12px;">↗</span>
                     </a>
@@ -761,7 +761,7 @@
         <!-- Enhanced Network Status -->
         <div class="network-status">
             <div id="network-title">🌐 Global P2P Network</div>
-            <div id="network-stats">Initializing advanced mesh...</div>
+            <div id="network-stats">Initializing mesh with Service Worker...</div>
             <div id="peer-list" class="peer-list"></div>
         </div>
     </div>
@@ -777,7 +777,7 @@
                     const consentData = JSON.parse(consent);
                     const thirtyDaysMs = 30 * 24 * 60 * 60 * 1000;
                     
-                    if (Date.now() - consentData.timestamp < thirtyDaysMs && consentData.version === '2.0') {
+                    if (Date.now() - consentData.timestamp < thirtyDaysMs && consentData.version === '2.1') {
                         return true;
                     }
                 }
@@ -828,7 +828,7 @@
             
             const consentData = {
                 timestamp: Date.now(),
-                version: '2.0',
+                version: '2.1',
                 userAgent: navigator.userAgent,
                 consents: {
                     tos: true, p2p: true, algorithms: true,
@@ -837,6 +837,8 @@
                 networkFeatures: {
                     ftdfrp: true,
                     webrtc: true,
+                    serviceWorker: true,
+                    broadcastChannel: true,
                     advanced: true,
                     mesh: true
                 }
@@ -859,7 +861,7 @@
                     if (window.React && window.ReactDOM && 
                         typeof window.initializeCompleteApplication === 'function' &&
                         window.initializeCompleteApplication.toString().includes('EnhancedCompleteApplication')) {
-                        console.log('🚀 React ready - initializing advanced network...');
+                        console.log('🚀 React ready - initializing enhanced network...');
                         window.initializeCompleteApplication();
                     } else if (attempts < maxAttempts) {
                         console.log(`⏳ Waiting for React components... (${attempts}/${maxAttempts})`);
@@ -926,14 +928,14 @@
         });
     </script>
 
-    <!-- Enhanced P2P Network with advanced-Inspired Features -->
+    <!-- Enhanced P2P Network with Service Worker Support -->
     <script type="text/babel">
-        // Enhanced P2P Network with Production Features
+        // Enhanced P2P Network with Service Worker and Local Discovery
         class AdvancedP2PNetwork {
             constructor() {
                 requireConsent();
                 
-                this.nodeId = 'anode_' + this.generateAdvancedId();
+                this.nodeId = 'node_' + this.generateAdvancedId();
                 this.peer = null;
                 this.connections = new Map();
                 this.discoveredPeers = new Map();
@@ -947,6 +949,8 @@
                 this.heartbeatInterval = null;
                 this.discoveryInterval = null;
                 this.performanceMetrics = new Map();
+                this.broadcastChannel = null;
+                this.serviceWorkerReady = false;
                 
                 // Enhanced STUN/TURN servers for global reach and NAT traversal
                 this.stunServers = [
@@ -969,13 +973,13 @@
                 this.networkConfig = {
                     maxConnections: 8,
                     heartbeatInterval: 25000,
-                    discoveryInterval: 12000,
+                    discoveryInterval: 8000, // More frequent discovery
                     cleanupInterval: 60000,
                     connectionTimeout: 15000,
                     retryAttempts: 3
                 };
                 
-                console.log('🌌 Advanced P2P Network initialized with optimized routing');
+                console.log('🌌 Enhanced P2P Network initialized with Service Worker support');
             }
 
             generateAdvancedId() {
@@ -1019,7 +1023,10 @@
 
             async initialize() {
                 try {
-                    this.debug('🚀 Initializing Advanced Global P2P Network...', 'info');
+                    this.debug('🚀 Initializing Enhanced P2P Network with Service Worker...', 'info');
+                    
+                    // Initialize Service Worker first
+                    await this.registerServiceWorker();
                     
                     this.peer = new Peer(this.nodeId, {
                         config: {
@@ -1036,8 +1043,8 @@
                     this.isOnline = true;
                     this.emit('networkReady', { 
                         nodeId: this.nodeId, 
-                        algorithm: 'Advanced-P2P',
-                        features: ['mesh-topology', 'global-routing', 'optimized-coordination']
+                        algorithm: 'Enhanced-P2P',
+                        features: ['service-worker', 'broadcast-channel', 'mesh-topology', 'global-routing']
                     });
                     
                 } catch (error) {
@@ -1046,10 +1053,143 @@
                     setTimeout(() => this.initialize(), 5000); // Retry
                 }
             }
+
+            async registerServiceWorker() {
+                try {
+                    if ('serviceWorker' in navigator) {
+                        // Create inline service worker for P2P coordination
+                        const swCode = `
+                            const CACHE_NAME = 'pss-p2p-v2';
+                            const announcements = new Map();
+                            const discoveryChannels = new Set();
+                            let lastCleanup = Date.now();
+
+                            // Enhanced cleanup every 30 seconds
+                            setInterval(() => {
+                                const now = Date.now();
+                                let cleaned = 0;
+                                
+                                for (const [nodeId, data] of announcements.entries()) {
+                                    if (now - data.timestamp > 10 * 60 * 1000) { // 10 minutes
+                                        announcements.delete(nodeId);
+                                        cleaned++;
+                                    }
+                                }
+                                
+                                if (cleaned > 0) {
+                                    console.log('🧹 SW cleaned', cleaned, 'stale announcements');
+                                }
+                                
+                                lastCleanup = now;
+                            }, 30000);
+
+                            self.addEventListener('message', function(event) {
+                                const { type, data } = event.data;
+                                
+                                if (type === 'peer_announcement') {
+                                    const announcement = data;
+                                    announcements.set(announcement.nodeId, announcement);
+                                    
+                                    // Enhanced broadcast to all connected clients instantly
+                                    self.clients.matchAll({ includeUncontrolled: true }).then(clients => {
+                                        clients.forEach(client => {
+                                            try {
+                                                client.postMessage({
+                                                    type: 'peer_discovered',
+                                                    data: announcement,
+                                                    via: 'service-worker',
+                                                    timestamp: Date.now()
+                                                });
+                                            } catch (e) {
+                                                console.warn('SW broadcast failed:', e);
+                                            }
+                                        });
+                                    });
+                                    
+                                    console.log('🔧 SW stored announcement for:', announcement.nodeId.substr(0, 12));
+                                }
+                                
+                                if (type === 'get_announcements') {
+                                    const allAnnouncements = Array.from(announcements.values())
+                                        .filter(a => Date.now() - a.timestamp < 10 * 60 * 1000); // Only recent
+                                    
+                                    if (event.ports && event.ports[0]) {
+                                        event.ports[0].postMessage({
+                                            announcements: allAnnouncements,
+                                            count: allAnnouncements.length,
+                                            timestamp: Date.now()
+                                        });
+                                    }
+                                }
+                                
+                                if (type === 'get_stats') {
+                                    const stats = {
+                                        announcements: announcements.size,
+                                        lastCleanup: lastCleanup,
+                                        uptime: Date.now() - (self.swStartTime || Date.now())
+                                    };
+                                    
+                                    if (event.ports && event.ports[0]) {
+                                        event.ports[0].postMessage(stats);
+                                    }
+                                }
+                            });
+
+                            self.addEventListener('install', function(event) {
+                                console.log('🔧 SW Installing...');
+                                self.swStartTime = Date.now();
+                                self.skipWaiting();
+                            });
+
+                            self.addEventListener('activate', function(event) {
+                                console.log('🔧 SW Activating...');
+                                event.waitUntil(self.clients.claim());
+                            });
+
+                            console.log('🔧 Enhanced Service Worker for P2P coordination loaded');
+                        `;
+
+                        const blob = new Blob([swCode], { type: 'application/javascript' });
+                        const swUrl = URL.createObjectURL(blob);
+                        
+                        const registration = await navigator.serviceWorker.register(swUrl);
+                        
+                        // Wait for service worker to be ready
+                        await navigator.serviceWorker.ready;
+                        
+                        this.debug('🔧 Enhanced Service Worker registered for P2P coordination', 'success');
+                        
+                        // Listen for peer discoveries from service worker
+                        navigator.serviceWorker.addEventListener('message', (event) => {
+                            if (event.data.type === 'peer_discovered') {
+                                this.handleServiceWorkerPeerDiscovery(event.data.data);
+                            }
+                        });
+                        
+                        this.serviceWorkerReady = true;
+                        return true;
+                    }
+                } catch (error) {
+                    this.debug('❌ ServiceWorker registration failed: ' + error.message, 'error');
+                }
+                return false;
+            }
+
+            handleServiceWorkerPeerDiscovery(peerAnnouncement) {
+                if (peerAnnouncement.nodeId !== this.nodeId && 
+                    !this.connections.has(peerAnnouncement.nodeId) &&
+                    this.connections.size < this.networkConfig.maxConnections) {
+                    
+                    this.debug(`👀 SW discovered peer: ${peerAnnouncement.nodeId.substr(0, 12)}...`, 'info');
+                    setTimeout(() => {
+                        this.connectToPeer(peerAnnouncement.nodeId);
+                    }, Math.random() * 2000); // Random delay to prevent thundering herd
+                }
+            }
             
             setupPeerEvents() {
                 this.peer.on('open', (id) => {
-                    this.debug(`🆔 Advanced Node Online: ${id}`, 'success');
+                    this.debug(`🆔 Enhanced Node Online: ${id}`, 'success');
                     this.nodeId = id;
                     this.announceToNetwork();
                     this.updateRoutingTable();
@@ -1099,7 +1239,7 @@
 
                 conn.on('open', () => {
                     clearTimeout(connectionTimeout);
-                    this.debug(`✅ advanced connection established: ${conn.peer}`, 'success');
+                    this.debug(`✅ Enhanced connection established: ${conn.peer}`, 'success');
                     this.connections.set(conn.peer, {
                         connection: conn,
                         lastSeen: Date.now(),
@@ -1122,7 +1262,7 @@
                 });
                 
                 conn.on('close', () => {
-                    this.debug(`🔌 advanced connection closed: ${conn.peer}`, 'info');
+                    this.debug(`🔌 Enhanced connection closed: ${conn.peer}`, 'info');
                     this.connections.delete(conn.peer);
                     this.updateRoutingTable();
                     this.emit('peerDisconnected', { peerId: conn.peer });
@@ -1136,16 +1276,17 @@
             
             sendAdvancedHandshake(conn) {
                 const handshake = {
-                    type: 'ADVANCED_HANDSHAKE',
+                    type: 'ENHANCED_HANDSHAKE',
                     nodeId: this.nodeId,
                     vector: this.vector,
                     timestamp: Date.now(),
-                    features: ['advanced-routing', 'mesh-topology', 'humanitarian-optimization'],
-                    version: '2.0',
+                    features: ['enhanced-routing', 'mesh-topology', 'service-worker', 'humanitarian-optimization'],
+                    version: '2.1',
                     capabilities: {
                         maxConnections: this.networkConfig.maxConnections,
-                        algorithms: ['advanced-routing', 'secure-hash'],
-                        protocols: ['WebRTC', 'humanitarian-mesh']
+                        algorithms: ['enhanced-routing', 'secure-hash'],
+                        protocols: ['WebRTC', 'humanitarian-mesh', 'broadcast-channel'],
+                        serviceWorker: this.serviceWorkerReady
                     }
                 };
                 
@@ -1161,11 +1302,11 @@
             }
             
             handlePeerMessage(peerId, data) {
-                this.debug(`📨 advanced message from ${peerId}: ${data.type}`, 'info');
+                this.debug(`📨 Enhanced message from ${peerId}: ${data.type}`, 'info');
                 
                 try {
                     switch (data.type) {
-                        case 'ADVANCED_HANDSHAKE':
+                        case 'ENHANCED_HANDSHAKE':
                             this.handleAdvancedHandshake(peerId, data);
                             break;
                             
@@ -1275,7 +1416,7 @@
                     this.routingTable.set(peerId, { nextHop: peerId, distance: 1 });
                 }
 
-                // Multi-hop routes via advanced P2P algorithm
+                // Multi-hop routes via enhanced P2P algorithm
                 for (const [peerId, peer] of this.discoveredPeers.entries()) {
                     if (!this.routingTable.has(peerId)) {
                         this.routingTable.set(peerId, {
@@ -1328,25 +1469,88 @@
                     nodeId: this.nodeId,
                     vector: this.vector,
                     timestamp: Date.now(),
-                    version: '2.0',
-                    features: ['advanced P2P', 'advanced-enhanced', 'humanitarian-mesh'],
-                    capabilities: this.networkConfig
+                    version: '2.1',
+                    features: ['enhanced P2P', 'service-worker', 'humanitarian-mesh'],
+                    capabilities: this.networkConfig,
+                    origin: window.location.origin,
+                    userAgent: navigator.userAgent.split(')')[0] + ')', // Partial UA for identification
                 };
                 
+                // Multi-channel discovery approach
+                const discoveryPromises = [
+                    this.announceViaBroadcastChannel(announcement),
+                    this.announceViaServiceWorker(announcement), 
+                    this.announceViaLocalStorage(announcement)
+                ];
+                
                 try {
-                    const announcements = JSON.parse(localStorage.getItem('p2p_announcements') || '[]');
+                    const results = await Promise.allSettled(discoveryPromises);
+                    const successful = results.filter(r => r.status === 'fulfilled').length;
+                    this.debug(`📡 Enhanced announcement: ${successful}/3 channels successful`, 'success');
+                } catch (error) {
+                    this.debug('❌ Failed to announce: ' + error.message, 'error');
+                }
+            }
+
+            async announceViaBroadcastChannel(announcement) {
+                try {
+                    if (typeof BroadcastChannel !== 'undefined') {
+                        const channel = new BroadcastChannel('pss_p2p_discovery_v2');
+                        channel.postMessage({
+                            type: 'peer_announcement',
+                            data: announcement,
+                            timestamp: Date.now()
+                        });
+                        channel.close();
+                        this.debug('📻 BroadcastChannel announce sent', 'success');
+                        return true;
+                    }
+                } catch (error) {
+                    this.debug('❌ BroadcastChannel failed: ' + error.message, 'error');
+                }
+                return false;
+            }
+
+            async announceViaServiceWorker(announcement) {
+                try {
+                    if ('serviceWorker' in navigator && navigator.serviceWorker.controller && this.serviceWorkerReady) {
+                        navigator.serviceWorker.controller.postMessage({
+                            type: 'peer_announcement',
+                            data: announcement
+                        });
+                        this.debug('🔧 ServiceWorker announce sent', 'success');
+                        return true;
+                    }
+                } catch (error) {
+                    this.debug('❌ ServiceWorker failed: ' + error.message, 'error');
+                }
+                return false;
+            }
+
+            async announceViaLocalStorage(announcement) {
+                try {
+                    const announcements = JSON.parse(localStorage.getItem('p2p_announcements_v2') || '[]');
                     announcements.push(announcement);
                     
                     // Keep only recent announcements
                     const maxAge = 10 * 60 * 1000; // 10 minutes
                     const fresh = announcements.filter(a => Date.now() - a.timestamp < maxAge);
                     
-                    localStorage.setItem('p2p_announcements', JSON.stringify(fresh));
-                    this.debug('📢 advanced announcement broadcasted', 'success');
+                    localStorage.setItem('p2p_announcements_v2', JSON.stringify(fresh));
                     
+                    // Trigger storage event for other tabs
+                    window.dispatchEvent(new StorageEvent('storage', {
+                        key: 'p2p_announcements_v2',
+                        newValue: JSON.stringify(fresh),
+                        url: window.location.href
+                    }));
+                    
+                    this.debug('💾 localStorage announce stored', 'success');
+                    return true;
                 } catch (error) {
-                    this.debug('❌ Failed to announce: ' + error.message, 'error');
+                    this.debug('❌ localStorage failed: ' + error.message, 'error');
                 }
+                return false;
             }
             
             async startPeerDiscovery() {
@@ -1356,42 +1560,80 @@
                     this.discoverPeers();
                     this.cleanupStaleData();
                 }, this.networkConfig.discoveryInterval);
+                
+                // Setup BroadcastChannel listener
+                this.setupBroadcastChannelListener();
+                
+                // Setup localStorage listener
+                window.addEventListener('storage', (event) => {
+                    if (event.key === 'p2p_announcements_v2') {
+                        this.handleStorageEvent(event);
+                    }
+                });
+            }
+
+            setupBroadcastChannelListener() {
+                try {
+                    if (typeof BroadcastChannel !== 'undefined') {
+                        this.broadcastChannel = new BroadcastChannel('pss_p2p_discovery_v2');
+                        
+                        this.broadcastChannel.addEventListener('message', (event) => {
+                            if (event.data.type === 'peer_announcement') {
+                                const announcement = event.data.data;
+                                if (announcement.nodeId !== this.nodeId &&
+                                    !this.connections.has(announcement.nodeId) &&
+                                    this.connections.size < this.networkConfig.maxConnections) {
+                                    
+                                    this.debug(`📻 BroadcastChannel peer: ${announcement.nodeId.substr(0, 12)}...`, 'info');
+                                    setTimeout(() => {
+                                        this.connectToPeer(announcement.nodeId);
+                                    }, Math.random() * 1000); // Random delay
+                                }
+                            }
+                        });
+                    }
+                } catch (error) {
+                    console.warn('BroadcastChannel setup failed:', error);
+                }
+            }
+
+            handleStorageEvent(event) {
+                try {
+                    if (event.newValue) {
+                        const announcements = JSON.parse(event.newValue);
+                        const now = Date.now();
+                        const maxAge = 10 * 60 * 1000; // 10 minutes
+                        
+                        for (const stored of announcements) {
+                            if (now - stored.timestamp < maxAge && 
+                                stored.nodeId !== this.nodeId &&
+                                !this.connections.has(stored.nodeId) &&
+                                this.connections.size < this.networkConfig.maxConnections) {
+                                
+                                this.debug(`💾 Storage peer: ${stored.nodeId.substr(0, 12)}...`, 'info');
+                                setTimeout(() => {
+                                    this.connectToPeer(stored.nodeId);
+                                }, Math.random() * 1500); // Random delay
+                            }
+                        }
+                    }
+                } catch (error) {
+                    console.warn('Storage event handling failed:', error);
+                }
             }
             
             async discoverPeers() {
+                await this.announceToNetwork();
+                await this.searchForPeers();
+            }
+
+            async searchForPeers() {
+                const now = Date.now();
+                const maxAge = 10 * 60 * 1000; // 10 minutes
+                
+                // Search localStorage
                 try {
-                    // Try simple rendezvous via a public pastebin-style endpoint
-                    // This is a minimal viable discovery mechanism
-                    
-                    // First announce ourselves
-                    const announcement = {
-                        nodeId: this.nodeId,
-                        timestamp: Date.now(),
-                        vector: this.vector.slice(0, 4) // Only send first 4 dimensions for privacy
-                    };
-                    
-                    try {
-                        // Announce to a simple rendezvous endpoint
-                        await fetch('https://httpbin.org/post', {
-                            method: 'POST',
-                            headers: { 'Content-Type': 'application/json' },
-                            body: JSON.stringify({ 
-                                type: 'peer_announce',
-                                room: 'humanitarian_network',
-                                data: announcement 
-                            })
-                        });
-                    } catch (e) {
-                        this.debug('❌ Rendezvous announce failed, falling back to local:', e.message, 'error');
-                    }
-                    
-                    // Also keep localStorage for local tabs
-                    const announcements = JSON.parse(localStorage.getItem('p2p_announcements') || '[]');
-                    announcements.push(announcement);
-                    
-                    const now = Date.now();
-                    const maxAge = 15 * 60 * 1000; // 15 minutes
-                    
+                    const announcements = JSON.parse(localStorage.getItem('p2p_announcements_v2') || '[]');
                     for (const stored of announcements) {
                         if (now - stored.timestamp < maxAge && 
                             stored.nodeId !== this.nodeId &&
@@ -1402,7 +1644,39 @@
                         }
                     }
                 } catch (error) {
-                    this.debug('❌ Peer discovery error: ' + error.message, 'error');
+                    console.warn('localStorage search failed:', error);
+                }
+
+                // Search via ServiceWorker
+                if (this.serviceWorkerReady) {
+                    try {
+                        if ('serviceWorker' in navigator && navigator.serviceWorker.controller) {
+                            const channel = new MessageChannel();
+                            
+                            navigator.serviceWorker.controller.postMessage({
+                                type: 'get_announcements'
+                            }, [channel.port2]);
+                            
+                            channel.port1.onmessage = (event) => {
+                                const { announcements } = event.data;
+                                if (announcements && Array.isArray(announcements)) {
+                                    for (const stored of announcements) {
+                                        if (now - stored.timestamp < maxAge && 
+                                            stored.nodeId !== this.nodeId &&
+                                            !this.connections.has(stored.nodeId) &&
+                                            this.connections.size < this.networkConfig.maxConnections) {
+                                            
+                                            setTimeout(() => {
+                                                this.connectToPeer(stored.nodeId);
+                                            }, Math.random() * 2000); // Random delay
+                                        }
+                                    }
+                                }
+                            };
+                        }
+                    } catch (error) {
+                        console.warn('ServiceWorker search failed:', error);
+                    }
                 }
             }
             
@@ -1412,7 +1686,7 @@
                 }
                 
                 try {
-                    this.debug(`📞 advanced connecting to: ${peerId}`, 'info');
+                    this.debug(`📞 Enhanced connecting to: ${peerId}`, 'info');
                     const conn = this.peer.connect(peerId, {
                         reliable: true,
                         serialization: 'json'
@@ -1446,9 +1720,9 @@
                 
                 // Clean local storage
                 try {
-                    const announcements = JSON.parse(localStorage.getItem('p2p_announcements') || '[]');
-                    const fresh = announcements.filter(a => now - a.timestamp < 15 * 60 * 1000);
-                    localStorage.setItem('p2p_announcements', JSON.stringify(fresh));
+                    const announcements = JSON.parse(localStorage.getItem('p2p_announcements_v2') || '[]');
+                    const fresh = announcements.filter(a => now - a.timestamp < 10 * 60 * 1000);
+                    localStorage.setItem('p2p_announcements_v2', JSON.stringify(fresh));
                 } catch (error) {
                     console.warn('Cleanup failed:', error);
                 }
@@ -1471,7 +1745,7 @@
                     },
                     timestamp: Date.now(),
                     sender: this.nodeId,
-                    algorithm: 'advanced P2P'
+                    algorithm: 'enhanced P2P'
                 };
                 
                 let broadcastCount = 0;
@@ -1483,29 +1757,29 @@
                             peerInfo.connection.send(message);
                             peerInfo.messagesSent++;
                             broadcastCount++;
-                            this.debug(`📡 advanced broadcast to: ${peerId}`, 'success');
+                            this.debug(`📡 Enhanced broadcast to: ${peerId}`, 'success');
                         } catch (error) {
                             this.debug(`❌ Failed to send: ${error.message}`, 'error');
                         }
                     }
                 }
                 
-                this.debug(`📢 advanced broadcast to ${broadcastCount} peers`, 'success');
+                this.debug(`📢 Enhanced broadcast to ${broadcastCount} peers`, 'success');
                 return broadcastCount > 0;
             }
             
             async storePrayer(prayer) {
                 const enhancedPrayer = {
                     ...prayer,
-                    advancedId: this.generateAdvancedId(),
+                    enhancedId: this.generateAdvancedId(),
                     networkVector: this.vector.slice(0, 8), // First 8 dimensions for routing
                     timestamp: Date.now(),
-                    version: '2.0'
+                    version: '2.1'
                 };
 
                 this.prayers.set(enhancedPrayer.id, enhancedPrayer);
                 
-                // Store locally with advanced enhancement
+                // Store locally with enhanced enhancement
                 try {
                     const prayers = JSON.parse(localStorage.getItem('network_prayers') || '{}');
                     prayers[enhancedPrayer.id] = enhancedPrayer;
@@ -1514,7 +1788,7 @@
                     console.warn('Failed to store prayer:', error);
                 }
                 
-                // advanced-enhanced broadcast
+                // Enhanced-enhanced broadcast
                 const success = this.broadcastPrayer(enhancedPrayer);
                 this.emit('prayerStored', enhancedPrayer);
                 
@@ -1539,9 +1813,9 @@
                     console.warn('Failed to load stored prayers:', error);
                 }
                 
-                // Sort by advanced distance and timestamp
+                // Sort by enhanced distance and timestamp
                 return prayers.sort((a, b) => {
-                    if (a.advancedId && b.advancedId) {
+                    if (a.enhancedId && b.enhancedId) {
                         return b.timestamp - a.timestamp; // Most recent first
                     }
                     return b.timestamp - a.timestamp;
@@ -1558,7 +1832,8 @@
                             connections: this.connections.size,
                             prayers: this.prayers.size,
                             uptime: Date.now() - this.startTime,
-                            quality: this.calculateNetworkQuality()
+                            quality: this.calculateNetworkQuality(),
+                            serviceWorker: this.serviceWorkerReady
                         }
                     };
 
@@ -1605,11 +1880,12 @@
                     discoveredPeers: this.discoveredPeers.size,
                     prayers: this.prayers.size,
                     uptime: Date.now() - this.startTime,
-                    algorithm: 'advanced P2P',
-                    version: '2.0',
+                    algorithm: 'Enhanced P2P',
+                    version: '2.1',
                     quality: this.calculateNetworkQuality(),
                     routes: this.routingTable.size,
-                    features: ['advanced-enhanced', 'mesh-topology', 'humanitarian-coordination']
+                    features: ['enhanced-enhanced', 'service-worker', 'broadcast-channel', 'mesh-topology', 'humanitarian-coordination'],
+                    serviceWorker: this.serviceWorkerReady
                 };
             }
 
@@ -1686,6 +1962,10 @@
                     clearInterval(this.discoveryInterval);
                 }
                 
+                if (this.broadcastChannel) {
+                    this.broadcastChannel.close();
+                }
+                
                 for (const [peerId, peerInfo] of this.connections.entries()) {
                     peerInfo.connection.close();
                 }
@@ -1726,12 +2006,12 @@
                 const message = `${domain} wants you to sign in with your Ethereum account:
 ${address}
 
-Welcome to the advanced-Enhanced Humanitarian Network
+Welcome to the Enhanced P2P Humanitarian Network
 
 This signature verifies your identity for the decentralized P2P network without revealing personal information.
 
 URI: ${window.location.origin}
-Version: 2.0
+Version: 2.1
 Chain ID: ${chainId}
 Nonce: ${nonce}
 Issued At: ${issuedAt}`;
@@ -1779,8 +2059,8 @@ Issued At: ${issuedAt}`;
                         verified: true,
                         authMethod: 'ethereum',
                         timestamp: Date.now(),
-                        version: '2.0',
-                        advancedEnhanced: true
+                        version: '2.1',
+                        enhanced: true
                     };
                 } catch (error) {
                     if (error.code === 4001) {
@@ -1856,8 +2136,8 @@ Issued At: ${issuedAt}`;
                         verified: true,
                         authMethod: 'passkey',
                         timestamp: Date.now(),
-                        version: '2.0',
-                        advancedEnhanced: true,
+                        version: '2.1',
+                        enhanced: true,
                         authenticatorData: credential.response.authenticatorData
                     };
                 } catch (error) {
@@ -1885,8 +2165,8 @@ Issued At: ${issuedAt}`;
                     verified: false,
                     authMethod: 'anonymous',
                     timestamp,
-                    version: '2.0',
-                    advancedEnhanced: true,
+                    version: '2.1',
+                    enhanced: true,
                     note: 'Limited features available in anonymous mode'
                 };
             }
@@ -1903,9 +2183,9 @@ Issued At: ${issuedAt}`;
             const [prayers, setPrayers] = useState([]);
             const [networkStats, setNetworkStats] = useState({ 
                 connections: 0, discoveredPeers: 0, prayers: 0, isOnline: false, 
-                uptime: 0, quality: 0, algorithm: 'advanced P2P', version: '2.0' 
+                uptime: 0, quality: 0, algorithm: 'Enhanced P2P', version: '2.1' 
             });
-            const [initStatus, setInitStatus] = useState('Initializing advanced-enhanced network...');
+            const [initStatus, setInitStatus] = useState('Initializing enhanced network with Service Worker...');
             const [showCreateForm, setShowCreateForm] = useState(false);
             const [showDebug, setShowDebug] = useState(false);
             const [showPerformance, setShowPerformance] = useState(false);
@@ -1958,20 +2238,20 @@ Issued At: ${issuedAt}`;
                         const authSystem = new ModernDecentralizedAuth();
                         setAuth(authSystem);
                         
-                        setInitStatus('🌌 Starting advanced P2P network...');
+                        setInitStatus('🌌 Starting Enhanced P2P network with Service Worker...');
                         
                         const networkSystem = new AdvancedP2PNetwork();
                         networkRef.current = networkSystem;
                         setNetwork(networkSystem);
                         
-                        setInitStatus('📡 Configuring advanced routing protocols...');
+                        setInitStatus('📡 Configuring enhanced routing protocols...');
                         
                         // Enhanced event listeners
                         networkSystem.on('networkReady', (data) => {
-                            console.log('✅ Advanced network ready:', data);
+                            console.log('✅ Enhanced network ready:', data);
                             setIsNetworkReady(true);
-                            setInitStatus('🌐 Connected to global mesh network');
-                            networkSystem.showToast('🌌 Advanced humanitarian network online!');
+                            setInitStatus('🌐 Connected to enhanced mesh network with Service Worker');
+                            networkSystem.showToast('🌌 Enhanced humanitarian network online with SW support!');
                             loadPrayers(networkSystem);
                             
                             const stats = networkSystem.getNetworkStats();
@@ -1980,7 +2260,7 @@ Issued At: ${issuedAt}`;
                         });
                         
                         networkSystem.on('peerConnected', (data) => {
-                            console.log('👥 Advanced peer connected:', data.peerId);
+                            console.log('👥 Enhanced peer connected:', data.peerId);
                             networkSystem.showToast(`👥 P2P connection: ${data.peerId.substr(0, 12)}...`);
                             
                             const stats = networkSystem.getNetworkStats();
@@ -1989,7 +2269,7 @@ Issued At: ${issuedAt}`;
                         });
                         
                         networkSystem.on('peerDisconnected', (data) => {
-                            console.log('🔌 advanced peer disconnected:', data.peerId);
+                            console.log('🔌 Enhanced peer disconnected:', data.peerId);
                             
                             const stats = networkSystem.getNetworkStats();
                             setNetworkStats(stats);
@@ -1997,7 +2277,7 @@ Issued At: ${issuedAt}`;
                         });
                         
                         networkSystem.on('prayerReceived', (prayer) => {
-                            console.log('📿 Prayer received via advanced network:', prayer.id);
+                            console.log('📿 Prayer received via enhanced network:', prayer.id);
                             loadPrayers(networkSystem);
                         });
                         
@@ -2006,7 +2286,7 @@ Issued At: ${issuedAt}`;
                             updateNetworkDisplay(stats);
                         });
                         
-                        setInitStatus('🚀 Initializing advanced mesh connections...');
+                        setInitStatus('🚀 Initializing enhanced mesh connections...');
                         
                         await networkSystem.initialize();
                         
@@ -2020,7 +2300,7 @@ Issued At: ${issuedAt}`;
                                 const sessionAge = Date.now() - userData.timestamp;
                                 const maxSessionAge = 7 * 24 * 60 * 60 * 1000; // 7 days
                                 
-                                if (sessionAge < maxSessionAge && userData.version === '2.0') {
+                                if (sessionAge < maxSessionAge && userData.version === '2.1') {
                                     setUser(userData);
                                     networkSystem.showToast(`🔐 Welcome back, ${userData.displayName}!`);
                                 } else {
@@ -2035,12 +2315,12 @@ Issued At: ${issuedAt}`;
                         
                         setTimeout(() => {
                             setIsNetworkReady(true);
-                            setInitStatus('🌟 advanced humanitarian network operational');
+                            setInitStatus('🌟 Enhanced humanitarian network operational with Service Worker');
                         }, 2000);
                         
                     } catch (error) {
-                        console.error('Failed to initialize advanced application:', error);
-                        setInitStatus('❌ advanced initialization failed - attempting recovery...');
+                        console.error('Failed to initialize enhanced application:', error);
+                        setInitStatus('❌ Enhanced initialization failed - attempting recovery...');
                         
                         setTimeout(() => {
                             window.location.reload();
@@ -2062,7 +2342,7 @@ Issued At: ${issuedAt}`;
                 try {
                     const prayerList = networkSystem.getStoredPrayers();
                     setPrayers(prayerList);
-                    console.log('📿 Loaded advanced prayers:', prayerList.length);
+                    console.log('📿 Loaded enhanced prayers:', prayerList.length);
                 } catch (error) {
                     console.error('Failed to load prayers:', error);
                 }
@@ -2074,13 +2354,15 @@ Issued At: ${issuedAt}`;
                 const peerList = document.getElementById('peer-list');
                 
                 if (networkTitle) {
-                    networkTitle.textContent = `🌌 advanced P2P Network (${stats.algorithm} v${stats.version})`;
+                    const swStatus = stats.serviceWorker ? '🔧SW' : '';
+                    networkTitle.textContent = `🌌 Enhanced P2P Network (${stats.algorithm} v${stats.version}) ${swStatus}`;
                 }
                 
                 if (networkStatsEl) {
                     const quality = stats.quality || 0;
                     const qualityIcon = quality > 0.8 ? '🟢' : quality > 0.5 ? '🟡' : '🔴';
-                    networkStatsEl.innerHTML = `${qualityIcon} ${stats.connections || 0} advanced links • ${stats.discoveredPeers || 0} mesh peers • Q${(quality * 100).toFixed(0)}%`;
+                    const swIcon = stats.serviceWorker ? '🔧' : '⚠️';
+                    networkStatsEl.innerHTML = `${qualityIcon} ${stats.connections || 0} enhanced links • ${stats.discoveredPeers || 0} mesh peers • Q${(quality * 100).toFixed(0)}% ${swIcon}SW`;
                 }
                 
                 if (peerList && networkRef.current) {
@@ -2140,7 +2422,7 @@ Issued At: ${issuedAt}`;
                     localStorage.setItem('prayers_user', JSON.stringify(userData));
                     
                     if (networkRef.current) {
-                        networkRef.current.showToast(`🔐 advanced authenticated: ${userData.displayName}!`);
+                        networkRef.current.showToast(`🔐 Enhanced authenticated: ${userData.displayName}!`);
                     }
                     
                 } catch (error) {
@@ -2163,7 +2445,7 @@ Issued At: ${issuedAt}`;
                     localStorage.setItem('prayers_user', JSON.stringify(userData));
                     
                     if (networkRef.current) {
-                        networkRef.current.showToast('🔐 Biometric advanced authentication successful!');
+                        networkRef.current.showToast('🔐 Biometric enhanced authentication successful!');
                     }
                     
                 } catch (error) {
@@ -2186,7 +2468,7 @@ Issued At: ${issuedAt}`;
                     localStorage.setItem('prayers_user', JSON.stringify(userData));
                     
                     if (networkRef.current) {
-                        networkRef.current.showToast('👤 Anonymous advanced session started!');
+                        networkRef.current.showToast('👤 Anonymous enhanced session started!');
                     }
                     
                 } catch (error) {
@@ -2203,7 +2485,7 @@ Issued At: ${issuedAt}`;
                 setUser(null);
                 localStorage.removeItem('prayers_user');
                 if (networkRef.current) {
-                    networkRef.current.showToast('👋 advanced session ended');
+                    networkRef.current.showToast('👋 Enhanced session ended');
                 }
             }, []);
 
@@ -2217,15 +2499,15 @@ Issued At: ${issuedAt}`;
                 }
 
                 if (!networkRef.current) {
-                    alert('❌ advanced network not ready. Please wait.');
+                    alert('❌ Enhanced network not ready. Please wait.');
                     return;
                 }
 
                 setLoading(true);
 
                 try {
-                    const advancedPrayer = {
-                        id: 'qprayer_' + Date.now() + '_' + Math.random().toString(36).substr(2, 8),
+                    const enhancedPrayer = {
+                        id: 'prayer_' + Date.now() + '_' + Math.random().toString(36).substr(2, 8),
                         ...newPrayer,
                         author: user.displayName,
                         authorAddress: user.address || user.anonymousId,
@@ -2233,15 +2515,15 @@ Issued At: ${issuedAt}`;
                         timestamp: Date.now(),
                         walletAddress: user.address || newPrayer.walletAddress,
                         tags: newPrayer.tags.split(',').map(tag => tag.trim()).filter(tag => tag),
-                        version: '2.0',
-                        advancedEnhanced: true
+                        version: '2.1',
+                        enhanced: true
                     };
 
-                    const success = await networkRef.current.storePrayer(advancedPrayer);
+                    const success = await networkRef.current.storePrayer(enhancedPrayer);
                     
                     const message = success ? 
-                        '✅ Prayer broadcast to advanced mesh network!' : 
-                        '📱 Prayer saved locally - will sync when advanced peers connect';
+                        '✅ Prayer broadcast to enhanced mesh network!' : 
+                        '📱 Prayer saved locally - will sync when enhanced peers connect';
                         
                     networkRef.current.showToast(message);
                     
@@ -2315,7 +2597,7 @@ Issued At: ${issuedAt}`;
                 if (networkRef.current) {
                     networkRef.current.debugMode = !networkRef.current.debugMode;
                     if (networkRef.current.debugMode) {
-                        networkRef.current.debug('🔍 advanced debug mode enabled', 'info');
+                        networkRef.current.debug('🔍 Enhanced debug mode enabled', 'info');
                     }
                 }
             }, []);
@@ -2329,16 +2611,16 @@ Issued At: ${issuedAt}`;
                     const stats = networkRef.current.getNetworkStats();
                     setNetworkStats(stats);
                     updateNetworkDisplay(stats);
-                    networkRef.current.showToast('🔄 advanced network state refreshed');
+                    networkRef.current.showToast('🔄 Enhanced network state refreshed');
                 }
             }, []);
 
             const emergencyNetworkReset = useCallback(() => {
-                if (confirm('⚠️ This will reset the advanced network connection. Continue?')) {
+                if (confirm('⚠️ This will reset the enhanced network connection. Continue?')) {
                     if (networkRef.current) {
                         networkRef.current.destroy();
                         setIsNetworkReady(false);
-                        setInitStatus('🔄 Restarting advanced network...');
+                        setInitStatus('🔄 Restarting enhanced network...');
                         
                         setTimeout(() => {
                             window.location.reload();
@@ -2355,52 +2637,51 @@ Issued At: ${issuedAt}`;
                 const recent = history.slice(-10); // Last 10 measurements
                 
                 return (
-                    <div className="card" style={{ marginTop: '20px' }}>
-                        <h3 style={{ marginBottom: '20px', color: '#2c3e50' }}>📊 advanced Network Performance</h3>
-                        <div className="feature-grid">
-                            <div>
-                                <h4>Connection Quality</h4>
-                                <div style={{ fontSize: '24px', color: '#4CAF50' }}>
-                                    {((networkStats.quality || 0) * 100).toFixed(1)}%
-                                </div>
-                                <small>Average across all advanced links</small>
-                            </div>
-                            <div>
-                                <h4>Network Uptime</h4>
-                                <div style={{ fontSize: '24px', color: '#2196F3' }}>
-                                    {Math.floor((networkStats.uptime || 0) / 60000)}m
-                                </div>
-                                <small>Continuous advanced operation</small>
-                            </div>
-                            <div>
-                                <h4>Routing Efficiency</h4>
-                                <div style={{ fontSize: '24px', color: '#ff9800' }}>
-                                    O(√n log n)
-                                </div>
-                                <small>advanced P2P algorithm complexity</small>
-                            </div>
-                            <div>
-                                <h4>Data Throughput</h4>
-                                <div style={{ fontSize: '24px', color: '#9c27b0' }}>
-                                    {prayers.length * 8}KB
-                                </div>
-                                <small>Humanitarian data processed</small>
-                            </div>
-                        </div>
-                        {recent.length > 0 && (
-                            <div style={{ marginTop: '20px' }}>
-                                <h4>Recent Performance Samples</h4>
-                                <div style={{ fontSize: '12px', fontFamily: 'monospace', background: '#f5f5f5', padding: '10px', borderRadius: '5px', maxHeight: '150px', overflow: 'auto' }}>
-                                    {recent.map((sample, i) => (
-                                        <div key={i}>
-                                            {new Date(sample.timestamp).toLocaleTimeString()}: 
-                                            {sample.connections}c {sample.discoveredPeers}p Q{((sample.quality || 0) * 100).toFixed(0)}%
-                                        </div>
-                                    ))}
-                                </div>
-                            </div>
-                        )}
-                    </div>
+                    React.createElement('div', { className: 'card', style: { marginTop: '20px' } },
+                        React.createElement('h3', { style: { marginBottom: '20px', color: '#2c3e50' } }, '📊 Enhanced Network Performance'),
+                        React.createElement('div', { className: 'feature-grid' },
+                            React.createElement('div', null,
+                                React.createElement('h4', null, 'Connection Quality'),
+                                React.createElement('div', { style: { fontSize: '24px', color: '#4CAF50' } },
+                                    ((networkStats.quality || 0) * 100).toFixed(1) + '%'
+                                ),
+                                React.createElement('small', null, 'Average across all enhanced links')
+                            ),
+                            React.createElement('div', null,
+                                React.createElement('h4', null, 'Network Uptime'),
+                                React.createElement('div', { style: { fontSize: '24px', color: '#2196F3' } },
+                                    Math.floor((networkStats.uptime || 0) / 60000) + 'm'
+                                ),
+                                React.createElement('small', null, 'Continuous enhanced operation')
+                            ),
+                            React.createElement('div', null,
+                                React.createElement('h4', null, 'Service Worker'),
+                                React.createElement('div', { style: { fontSize: '24px', color: networkStats.serviceWorker ? '#4CAF50' : '#ff9800' } },
+                                    networkStats.serviceWorker ? '🔧 Active' : '⚠️ Inactive'
+                                ),
+                                React.createElement('small', null, 'Enhanced local discovery')
+                            ),
+                            React.createElement('div', null,
+                                React.createElement('h4', null, 'Data Throughput'),
+                                React.createElement('div', { style: { fontSize: '24px', color: '#9c27b0' } },
+                                    prayers.length * 8 + 'KB'
+                                ),
+                                React.createElement('small', null, 'Humanitarian data processed')
+                            )
+                        ),
+                        recent.length > 0 && React.createElement('div', { style: { marginTop: '20px' } },
+                            React.createElement('h4', null, 'Recent Performance Samples'),
+                            React.createElement('div', { style: { fontSize: '12px', fontFamily: 'monospace', background: '#f5f5f5', padding: '10px', borderRadius: '5px', maxHeight: '150px', overflow: 'auto' } },
+                                recent.map((sample, i) =>
+                                    React.createElement('div', { key: i },
+                                        new Date(sample.timestamp).toLocaleTimeString() + ': ' +
+                                        sample.connections + 'c ' + sample.discoveredPeers + 'p Q' + ((sample.quality || 0) * 100).toFixed(0) + '% ' +
+                                        (sample.serviceWorker ? '🔧SW' : '⚠️SW')
+                                    )
+                                )
+                            )
+                        )
+                    )
                 );
             }, [networkStats, showPerformance, prayers.length]);
 
@@ -2409,7 +2690,7 @@ Issued At: ${issuedAt}`;
                 return React.createElement('div', { className: 'container' },
                     React.createElement('div', { className: 'hero' },
                         React.createElement('h1', null, '🌌 Prayers, Saints & Saviors'),
-                        React.createElement('p', null, 'advanced-Enhanced Global P2P Humanitarian Coordination Network'),
+                        React.createElement('p', null, 'Enhanced P2P Global Humanitarian Coordination Network with Service Worker Support'),
                         React.createElement('div', { 
                             style: { 
                                 margin: '40px 0', 
@@ -2430,7 +2711,7 @@ Issued At: ${issuedAt}`;
                             React.createElement('button', {
                                 onClick: forceNetworkUpdate,
                                 className: 'btn btn-secondary'
-                            }, '🔄 Force advanced Sync'),
+                            }, '🔄 Force Enhanced Sync'),
                             
                             React.createElement('button', {
                                 onClick: emergencyNetworkReset,
@@ -2440,12 +2721,13 @@ Issued At: ${issuedAt}`;
                             
                             React.createElement('button', {
                                 onClick: () => {
-                                    console.log('🔍 advanced Debug Info:');
+                                    console.log('🔍 Enhanced Debug Info:');
                                     console.log('Network instance:', networkRef.current);
                                     console.log('Network stats:', networkRef.current ? networkRef.current.getNetworkStats() : 'No network');
                                     console.log('Ready state:', isNetworkReady);
                                     console.log('Init status:', initStatus);
                                     console.log('User consent:', userConsent);
+                                    console.log('Service Worker ready:', networkRef.current ? networkRef.current.serviceWorkerReady : 'N/A');
                                 },
                                 className: 'btn',
                                 style: { background: '#9c27b0' }
@@ -2453,23 +2735,23 @@ Issued At: ${issuedAt}`;
                         )
                     ),
                     React.createElement('div', { className: 'card' },
-                        React.createElement('h3', { style: { color: '#2c3e50' } }, '🌐 advanced Network Status'),
+                        React.createElement('h3', { style: { color: '#2c3e50' } }, '🌐 Enhanced Network Status'),
                         React.createElement('div', { className: 'feature-grid' },
                             React.createElement('div', null,
-                                React.createElement('strong', null, 'Algorithm: '), 'advanced P2P v2.0'
+                                React.createElement('strong', null, 'Algorithm: '), 'Enhanced P2P v2.1'
                             ),
                             React.createElement('div', null,
-                                React.createElement('strong', null, 'advanced Links: '), networkStats.connections
+                                React.createElement('strong', null, 'Enhanced Links: '), networkStats.connections
                             ),
                             React.createElement('div', null,
                                 React.createElement('strong', null, 'Mesh Peers: '), networkStats.discoveredPeers
                             ),
                             React.createElement('div', null,
-                                React.createElement('strong', null, 'Network State: '), networkStats.isOnline ? 'Online' : 'Initializing'
+                                React.createElement('strong', null, 'Service Worker: '), networkStats.serviceWorker ? '🔧 Active' : '⚠️ Inactive'
                             )
                         ),
                         React.createElement('p', { style: { marginTop: '20px', fontSize: '14px', color: '#666' } },
-                            'Your browser is becoming part of a advanced advanced-enhanced mesh network that coordinates humanitarian aid globally using advanced advanced P2P algorithms with O(√n log n) complexity.'
+                            'Your browser is becoming part of an enhanced mesh network that coordinates humanitarian aid globally using Service Workers, BroadcastChannel API, and enhanced P2P algorithms for superior local discovery between browser instances on the same network.'
                         )
                     )
                 );
@@ -2481,21 +2763,21 @@ Issued At: ${issuedAt}`;
                     React.createElement('div', { className: 'hero' },
                         React.createElement('h1', null, '🌌 Prayers, Saints & Saviors'),
                         React.createElement('p', null, 
-                            'The world\'s first advanced-enhanced P2P humanitarian coordination network using advanced advanced P2P algorithms.'
+                            'The world\'s first enhanced P2P humanitarian coordination network with Service Worker support for local discovery.'
                         ),
                         React.createElement('p', { style: { fontSize: '1em', opacity: 0.9 } },
-                            'Your browser connects directly to a global advanced mesh via WebRTC with O(√n log n) routing efficiency.'
+                            'Your browser connects directly to a global enhanced mesh via WebRTC with Service Worker coordination.'
                         )
                     ),
 
                     React.createElement('div', { className: 'stats-bar' },
                         React.createElement('div', { className: 'stat' },
                             React.createElement('span', { className: 'stat-value' }, networkStats.discoveredPeers || 0),
-                            React.createElement('span', { className: 'stat-label' }, 'advanced Mesh Peers')
+                            React.createElement('span', { className: 'stat-label' }, 'Enhanced Mesh Peers')
                         ),
                         React.createElement('div', { className: 'stat' },
                             React.createElement('span', { className: 'stat-value' }, networkStats.connections || 0),
-                            React.createElement('span', { className: 'stat-label' }, 'Direct advanced Links')
+                            React.createElement('span', { className: 'stat-label' }, 'Direct Enhanced Links')
                         ),
                         React.createElement('div', { className: 'stat' },
                             React.createElement('span', { className: 'stat-value' }, prayers.length),
@@ -2503,15 +2785,15 @@ Issued At: ${issuedAt}`;
                         ),
                         React.createElement('div', { className: 'stat' },
                             React.createElement('span', { className: 'stat-value' }, 
-                                `Q${((networkStats.quality || 0) * 100).toFixed(0)}%`
+                                networkStats.serviceWorker ? '🔧' : '⚠️'
                             ),
-                            React.createElement('span', { className: 'stat-label' }, 'advanced Quality')
+                            React.createElement('span', { className: 'stat-label' }, 'Service Worker')
                         )
                     ),
 
                     React.createElement('div', { className: 'auth-section' },
                         React.createElement('h2', { style: { marginBottom: '35px', color: '#2c3e50' } },
-                            '🔐 Join the advanced Mesh Network'
+                            '🔐 Join the Enhanced Mesh Network'
                         ),
                         
                         React.createElement('button', {
@@ -2527,7 +2809,7 @@ Issued At: ${issuedAt}`;
                             className: 'btn btn-auth',
                             disabled: loading
                         }, loading ? React.createElement('span', { className: 'loading' }) : null,
-                            '🔐 advanced Biometric Auth'
+                            '🔐 Enhanced Biometric Auth'
                         ),
                         
                         React.createElement('button', {
@@ -2536,18 +2818,18 @@ Issued At: ${issuedAt}`;
                             disabled: loading,
                             style: { background: 'linear-gradient(135deg, #6c757d 0%, #495057 100%)' }
                         }, loading ? React.createElement('span', { className: 'loading' }) : null,
-                            '👤 Anonymous advanced Session'
+                            '👤 Anonymous Enhanced Session'
                         ),
 
                         React.createElement('div', { className: 'network-info' },
-                            React.createElement('h4', null, '🌌 advanced-Enhanced Features'),
+                            React.createElement('h4', null, '🌌 Enhanced Features'),
                             React.createElement('ul', { style: { marginLeft: '25px', lineHeight: '1.9' } },
-                                React.createElement('li', null, React.createElement('strong', null, 'advanced P2P Routing'), ' - O(√n log n) complexity humanitarian coordination'),
-                                React.createElement('li', null, React.createElement('strong', null, 'advanced WebRTC'), ' - Direct browser-to-browser advanced channels'),
-                                React.createElement('li', null, React.createElement('strong', null, 'Global Mesh Topology'), ' - Self-healing network with advanced resilience'),
-                                React.createElement('li', null, React.createElement('strong', null, 'Cross-Subnet Operation'), ' - Universal internet-scale deployment'),
-                                React.createElement('li', null, React.createElement('strong', null, 'Zero Infrastructure'), ' - Completely decentralized advanced mesh'),
-                                React.createElement('li', null, React.createElement('strong', null, 'Post-advanced Security'), ' - Future-proof cryptographic protection')
+                                React.createElement('li', null, React.createElement('strong', null, 'Service Worker Coordination'), ' - Background peer discovery and cross-tab sync'),
+                                React.createElement('li', null, React.createElement('strong', null, 'BroadcastChannel API'), ' - Real-time cross-tab communication'),
+                                React.createElement('li', null, React.createElement('strong', null, 'Enhanced WebRTC'), ' - Direct browser-to-browser enhanced channels'),
+                                React.createElement('li', null, React.createElement('strong', null, 'Local Network Discovery'), ' - Find peers on same WiFi network'),
+                                React.createElement('li', null, React.createElement('strong', null, 'Global Mesh Topology'), ' - Self-healing network with enhanced resilience'),
+                                React.createElement('li', null, React.createElement('strong', null, 'Zero Infrastructure'), ' - Completely decentralized enhanced mesh')
                             )
                         )
                     )
@@ -2586,13 +2868,13 @@ Issued At: ${issuedAt}`;
                         React.createElement('button', {
                             onClick: () => setShowCreateForm(true),
                             className: 'btn btn-secondary'
-                        }, '✨ Share advanced Prayer'),
+                        }, '✨ Share Enhanced Prayer'),
                         
                         React.createElement('button', {
                             onClick: toggleDebug,
                             className: 'btn',
                             style: { background: showDebug ? '#4CAF50' : '#666' }
-                        }, '🔍 advanced Debug'),
+                        }, '🔍 Enhanced Debug'),
                         
                         React.createElement('button', {
                             onClick: togglePerformance,
@@ -2614,14 +2896,15 @@ Issued At: ${issuedAt}`;
                                     const peersInfo = Array.from(networkRef.current.discoveredPeers.entries())
                                         .map(([id, peer]) => `${id.substr(0, 8)}: dist=${peer.distance?.toFixed(2) || '∞'}`);
                                     
-                                    alert(`🌌 advanced Network Statistics:
+                                    alert(`🌌 Enhanced Network Statistics:
 
 Node ID: ${stats.nodeId}
 Algorithm: ${stats.algorithm} v${stats.version}
-advanced Links: ${stats.connections}
+Enhanced Links: ${stats.connections}
 Mesh Peers: ${stats.discoveredPeers}
 Routing Table: ${routes} entries
 Quality: ${(stats.quality * 100).toFixed(1)}%
+Service Worker: ${stats.serviceWorker ? 'Active 🔧' : 'Inactive ⚠️'}
 Uptime: ${Math.floor(stats.uptime/60000)}m${Math.floor((stats.uptime%60000)/1000)}s
 Features: ${stats.features?.join(', ') || 'N/A'}
 
@@ -2632,14 +2915,14 @@ ${peersInfo.length > 5 ? '...' : ''}`);
                             },
                             className: 'btn',
                             style: { background: '#2196F3' }
-                        }, '📊 advanced Stats')
+                        }, '📊 Enhanced Stats')
                     )
                 ),
 
                 React.createElement('div', { className: 'stats-bar' },
                     React.createElement('div', { className: 'stat' },
                         React.createElement('span', { className: 'stat-value' }, networkStats.discoveredPeers || 0),
-                        React.createElement('span', { className: 'stat-label' }, 'advanced Mesh Peers')
+                        React.createElement('span', { className: 'stat-label' }, 'Enhanced Mesh Peers')
                     ),
                     React.createElement('div', { className: 'stat' },
                         React.createElement('span', { className: 'stat-value' }, networkStats.connections || 0),
@@ -2651,17 +2934,17 @@ ${peersInfo.length > 5 ? '...' : ''}`);
                     ),
                     React.createElement('div', { className: 'stat' },
                         React.createElement('span', { className: 'stat-value' }, 
-                            Math.floor((networkStats.uptime || 0) / 60000) + 'm'
+                            networkStats.serviceWorker ? '🔧' : '⚠️'
                         ),
-                        React.createElement('span', { className: 'stat-label' }, 'advanced Uptime')
+                        React.createElement('span', { className: 'stat-label' }, 'Service Worker')
                     )
                 ),
 
                 showDebug && React.createElement('div', { className: 'p2p-debug', style: { display: 'block' } },
                     React.createElement('div', { style: { color: '#fff', marginBottom: '15px', borderBottom: '1px solid #333', paddingBottom: '8px' } },
-                        React.createElement('strong', null, '🌌 Real-Time advanced Debug Console'),
+                        React.createElement('strong', null, '🌌 Real-Time Enhanced Debug Console'),
                         React.createElement('span', { style: { float: 'right', fontSize: '11px', opacity: 0.7 } }, 
-                            `advanced P2P v${networkStats.version} • ${connectionQuality} Quality`
+                            `Enhanced P2P v${networkStats.version} • ${connectionQuality} Quality • ${networkStats.serviceWorker ? '🔧SW Active' : '⚠️SW Inactive'}`
                         )
                     ),
                     React.createElement('div', { id: 'debug-output' })
@@ -2671,7 +2954,7 @@ ${peersInfo.length > 5 ? '...' : ''}`);
 
                 showCreateForm && React.createElement('div', { className: 'card' },
                     React.createElement('h3', { style: { marginBottom: '30px', color: '#2c3e50' } }, 
-                        '✨ Share advanced Prayer Request'
+                        '✨ Share Enhanced Prayer Request'
                     ),
                     
                     React.createElement('div', { className: 'feature-grid' },
@@ -2707,7 +2990,7 @@ ${peersInfo.length > 5 ? '...' : ''}`);
                         React.createElement('textarea', {
                             value: newPrayer.content, rows: 5,
                             onChange: (e) => setNewPrayer(prev => ({ ...prev, content: e.target.value })),
-                            placeholder: 'Describe your situation and how others can help. This will be shared across the advanced mesh network...'
+                            placeholder: 'Describe your situation and how others can help. This will be shared across the enhanced mesh network...'
                         })
                     ),
 
@@ -2782,7 +3065,7 @@ ${peersInfo.length > 5 ? '...' : ''}`);
                             onClick: submitPrayer, className: 'btn btn-secondary',
                             disabled: loading, style: { flex: 1 }
                         }, loading ? React.createElement('span', { className: 'loading' }) : null,
-                            '🚀 Broadcast to advanced Network'
+                            '🚀 Broadcast to Enhanced Network'
                         ),
                         React.createElement('button', {
                             onClick: () => setShowCreateForm(false), className: 'btn',
@@ -2793,17 +3076,16 @@ ${peersInfo.length > 5 ? '...' : ''}`);
 
                 React.createElement('div', { style: { marginTop: '50px' } },
                     React.createElement('h2', { style: { color: 'white', marginBottom: '30px', textAlign: 'center' } },
-                        '🌍 Global advanced Prayer Network'
+                        '🌍 Global Enhanced Prayer Network'
                     ),
 
                     prayers.length === 0 ? 
                         React.createElement('div', { className: 'network-info' },
-                            React.createElement('h4', null, '🌱 advanced Network Initializing'),
+                            React.createElement('h4', null, '🌱 Enhanced Network Initializing'),
                             React.createElement('p', null, 
                                 'Be among the first to share a prayer request! Your browser is now connected to the ',
-                                'advanced-enhanced global P2P humanitarian network. As more nodes join, our advanced P2P ',
-                                'algorithms will automatically route requests to the most relevant helpers with O(√n log n) ',
-                                'complexity, ensuring optimal humanitarian coordination at unprecedented scale.'
+                                'enhanced global P2P humanitarian network with Service Worker support. As more nodes join, our enhanced ',
+                                'algorithms will automatically route requests with superior local discovery and cross-browser coordination.'
                             )
                         ) :
                         prayers.map(prayer => 
@@ -2816,7 +3098,7 @@ ${peersInfo.length > 5 ? '...' : ''}`);
                                     React.createElement('div', { className: 'prayer-distance' },
                                         prayer.authorAddress === (user.address || user.anonymousId) ? 
                                             '🔗 Your Request' : 
-                                            `🌌 Via advanced Mesh • ${prayer.advancedId ? prayer.advancedId.substr(0, 12) + '...' : 'Global'}`
+                                            `🌌 Via Enhanced Mesh • ${prayer.enhancedId ? prayer.enhancedId.substr(0, 12) + '...' : 'Global'}`
                                     )
                                 ),
                                 
@@ -2859,7 +3141,7 @@ ${peersInfo.length > 5 ? '...' : ''}`);
                                         ' • ' + prayer.category,
                                         prayer.urgency && ` • ${prayer.urgency} priority`,
                                         ' • ' + new Date(prayer.timestamp).toLocaleDateString(),
-                                        prayer.advancedEnhanced && ' • ⚛️ advanced Enhanced'
+                                        prayer.enhanced && ' • ⚛️ Enhanced'
                                     ),
                                     
                                     prayer.walletAddress && 
@@ -2871,7 +3153,7 @@ ${peersInfo.length > 5 ? '...' : ''}`);
                                             disabled: loading,
                                             style: { fontSize: '13px', padding: '10px 20px' }
                                         }, loading ? React.createElement('span', { className: 'loading' }) : null,
-                                            '💝 advanced Contribute'
+                                            '💝 Enhanced Contribute'
                                         )
                                 )
                             )
@@ -2879,30 +3161,30 @@ ${peersInfo.length > 5 ? '...' : ''}`);
                 ),
 
                 React.createElement('div', { className: 'network-info', style: { marginTop: '50px' } },
-                    React.createElement('h4', null, '🔬 advanced-Enhanced Network Technology'),
+                    React.createElement('h4', null, '🔬 Enhanced Network Technology'),
                     React.createElement('p', null,
-                        `Your browser is operating as a advanced advanced P2P node with ${networkStats.connections} direct WebRTC `,
-                        `connections and ${networkStats.discoveredPeers} discovered peers in the global mesh. Using advanced `,
-                        'O(√n log n) complexity algorithms, you\'re helping coordinate humanitarian aid with unprecedented ',
-                        'efficiency across the global internet. The network operates with zero infrastructure costs while ',
-                        'maintaining advanced-enhanced security and complete censorship resistance.'
+                        `Your browser is operating as an enhanced P2P node with ${networkStats.connections} direct WebRTC `,
+                        `connections and ${networkStats.discoveredPeers} discovered peers in the global mesh. Using Service Workers `,
+                        'and BroadcastChannel API, you\'re helping coordinate humanitarian aid with enhanced efficiency across ',
+                        'the global internet, with superior local discovery for browsers on the same network.'
                     ),
                     React.createElement('div', { style: { marginTop: '20px', fontSize: '14px', opacity: 0.9 } },
                         `Network Quality: ${connectionQuality} (${((networkStats.quality || 0) * 100).toFixed(1)}%) • `,
                         `Algorithm: ${networkStats.algorithm} v${networkStats.version} • `,
+                        `Service Worker: ${networkStats.serviceWorker ? '🔧 Active' : '⚠️ Inactive'} • `,
                         `Uptime: ${Math.floor((networkStats.uptime || 0) / 60000)}m`
                     )
                 ),
 
                 React.createElement('footer', { style: { textAlign: 'center', padding: '50px 0', color: 'rgba(255,255,255,0.8)' } },
                     React.createElement('p', { style: { fontSize: '16px' } }, 
-                        'Built with ❤️ using advanced-Enhanced Global P2P WebRTC • Powered by your browser'
+                        'Built with ❤️ using Enhanced Global P2P WebRTC with Service Worker Support • Powered by your browser'
                     ),
                     React.createElement('p', { style: { fontSize: '13px', marginTop: '15px', opacity: 0.7 } },
-                        'Decentralized • Zero-Infrastructure • advanced WebRTC Mesh • advanced P2P O(√n log n) Efficient • Censorship-Resistant • Post-advanced Security'
+                        'Decentralized • Zero-Infrastructure • Enhanced WebRTC Mesh • Service Worker Coordination • Local Discovery • Censorship-Resistant'
                     ),
                     React.createElement('p', { style: { fontSize: '12px', marginTop: '10px', opacity: 0.6 } },
-                        `Network: ${networkStats.algorithm} v${networkStats.version} • Node: ${networkStats.nodeId?.substr(0, 16)}... • Quality: ${((networkStats.quality || 0) * 100).toFixed(0)}%`
+                        `Network: ${networkStats.algorithm} v${networkStats.version} • Node: ${networkStats.nodeId?.substr(0, 16)}... • SW: ${networkStats.serviceWorker ? 'Active' : 'Inactive'} • Q: ${((networkStats.quality || 0) * 100).toFixed(0)}%`
                     )
                 )
             );
