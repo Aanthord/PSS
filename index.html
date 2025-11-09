@@ -676,7 +676,7 @@
                     <p style="margin-bottom: 15px; line-height: 1.6;">
                         By proceeding, you agree to our comprehensive legal framework:
                     </p>
-                    <a href="https://pinnacle-quantum.org/pss/terms" target="_blank" style="color: var(--info); text-decoration: none; font-weight: 700; display: inline-flex; align-items: center; gap: 8px;">
+                    <a href="./terms-of-service.html" target="_blank" rel="noopener" style="color: var(--info); text-decoration: none; font-weight: 700; display: inline-flex; align-items: center; gap: 8px;">
                         📋 Complete Terms of Service & Privacy Policy
                         <span style="font-size: 12px;">↗</span>
                     </a>
@@ -978,8 +978,33 @@
                     connectionTimeout: 15000,
                     retryAttempts: 3
                 };
-                
+
                 console.log('🌌 Enhanced P2P Network initialized with Service Worker support');
+            }
+
+            sanitizeEndpoints(endpoints) {
+                if (window.location.protocol === 'https:') {
+                    return endpoints.filter(endpoint => !endpoint.startsWith('http://'));
+                }
+                return endpoints;
+            }
+
+            getGlobalAnnouncementEndpoints() {
+                return this.sanitizeEndpoints([
+                    `http://185.187.243.129:3000/api/announce`,
+                    `https://185.187.243.129:3001/api/announce`,
+                    `http://185.187.243.129:8080/peers/announce`,
+                    'https://httpbin.org/post',
+                    'https://postman-echo.com/post'
+                ]);
+            }
+
+            getGlobalPeerEndpoints() {
+                return this.sanitizeEndpoints([
+                    `http://185.187.243.129:3000/api/peers`,
+                    `https://185.187.243.129:3001/api/peers`,
+                    `http://185.187.243.129:8080/peers/list`
+                ]);
             }
 
             generateAdvancedId() {
@@ -2018,17 +2043,15 @@ console.log('🔧 Enhanced PSS Service Worker v2.1 loaded with IndexedDB support
 
             async announceViaGlobalRendezvous(announcement) {
                 // Global rendezvous with Mikey's persistent node
-                const globalEndpoints = [
-                    `http://185.187.243.129:3000/api/announce`,
-                    `https://185.187.243.129:3001/api/announce`,
-                    `http://185.187.243.129:8080/peers/announce`,
-                    // Fallback to HTTP-based endpoints
-                    'https://httpbin.org/post',
-                    'https://postman-echo.com/post'
-                ];
-                
+                const globalEndpoints = this.getGlobalAnnouncementEndpoints();
+
+                if (globalEndpoints.length === 0) {
+                    this.debug('⚠️ No compatible rendezvous endpoints for current protocol', 'error');
+                    return false;
+                }
+
                 let successCount = 0;
-                
+
                 for (const endpoint of globalEndpoints) {
                     try {
                         const isGlobalNode = endpoint.includes('185.187.243.129');
@@ -2325,12 +2348,8 @@ console.log('🔧 Enhanced PSS Service Worker v2.1 loaded with IndexedDB support
                 // Periodic discovery from global rendezvous node
                 if (Math.random() < 0.3) { // 30% chance each discovery cycle
                     try {
-                        const globalEndpoints = [
-                            `http://185.187.243.129:3000/api/peers`,
-                            `https://185.187.243.129:3001/api/peers`,
-                            `http://185.187.243.129:8080/peers/list`
-                        ];
-                        
+                        const globalEndpoints = this.getGlobalPeerEndpoints();
+
                         for (const endpoint of globalEndpoints) {
                             try {
                                 const response = await fetch(endpoint, {
@@ -3700,35 +3719,42 @@ ${peersInfo.length > 5 ? '...' : ''}`);
                                     }
                                     
                                     // Test Global Rendezvous
-                                    console.log('🌍 Testing Global Rendezvous (185.187.243.129)...');
-                                    try {
-                                        const globalResponse = await fetch('http://185.187.243.129:3000/api/peers', {
-                                            method: 'GET',
-                                            headers: { 'X-Network-Protocol': 'PSS-Enhanced-P2P' },
-                                            signal: AbortSignal.timeout(5000)
-                                        });
-                                        
-                                        if (globalResponse.ok) {
-                                            const data = await globalResponse.json();
-                                            console.log('🌍 Global node response:', data);
-                                        } else {
-                                            console.log('❌ Global node responded with:', globalResponse.status);
-                                        }
-                                    } catch (e) {
-                                        console.log('❌ Global node connection failed:', e.message);
-                                        
-                                        // Try backup endpoint
+                                    const rendezvousTargets = net.getGlobalPeerEndpoints();
+                                    const testEndpoint = rendezvousTargets.find(url => url.includes('185.187.243.129')) || rendezvousTargets[0];
+
+                                    if (testEndpoint) {
+                                        console.log(`🌍 Testing Global Rendezvous (${testEndpoint})...`);
                                         try {
-                                            const backupResponse = await fetch('https://httpbin.org/post', {
-                                                method: 'POST',
-                                                headers: { 'Content-Type': 'application/json' },
-                                                body: JSON.stringify({ type: 'connectivity_test', timestamp: Date.now() }),
-                                                signal: AbortSignal.timeout(3000)
+                                            const globalResponse = await fetch(testEndpoint, {
+                                                method: 'GET',
+                                                headers: { 'X-Network-Protocol': 'PSS-Enhanced-P2P' },
+                                                signal: AbortSignal.timeout(5000)
                                             });
-                                            console.log('🌐 Backup endpoint reachable:', backupResponse.ok);
-                                        } catch (e2) {
-                                            console.log('❌ All external endpoints failed - network isolation detected');
+
+                                            if (globalResponse.ok) {
+                                                const data = await globalResponse.json();
+                                                console.log('🌍 Global node response:', data);
+                                            } else {
+                                                console.log('❌ Global node responded with:', globalResponse.status);
+                                            }
+                                        } catch (e) {
+                                            console.log('❌ Global node connection failed:', e.message);
+
+                                            // Try backup endpoint
+                                            try {
+                                                const backupResponse = await fetch('https://httpbin.org/post', {
+                                                    method: 'POST',
+                                                    headers: { 'Content-Type': 'application/json' },
+                                                    body: JSON.stringify({ type: 'connectivity_test', timestamp: Date.now() }),
+                                                    signal: AbortSignal.timeout(3000)
+                                                });
+                                                console.log('🌐 Backup endpoint reachable:', backupResponse.ok);
+                                            } catch (e2) {
+                                                console.log('❌ All external endpoints failed - network isolation detected');
+                                            }
                                         }
+                                    } else {
+                                        console.log('⚠️ No rendezvous endpoints available for current protocol');
                                     }
                                     
                                     // Force announcement
