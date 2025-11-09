@@ -1055,10 +1055,85 @@
             }
 
             async registerServiceWorker() {
+                console.log('🔥 SERVICE WORKER REGISTRATION: Starting...');
                 try {
                     if ('serviceWorker' in navigator) {
-                        // Enhanced Service Worker with IndexedDB persistence and cross-tab coordination
-                        const swCode = `
+                        console.log('🔥 SERVICE WORKER: ServiceWorker API available');
+                        
+                        // Register the actual sw.js file
+                        console.log('🔥 SERVICE WORKER: Registering ./sw.js...');
+                        const registration = await navigator.serviceWorker.register('./sw.js', {
+                            scope: './'
+                        });
+                        
+                        console.log('🔥 SERVICE WORKER: Registration successful, waiting for ready...');
+                        await navigator.serviceWorker.ready;
+                        console.log('🔥 SERVICE WORKER: Ready signal received');
+                        
+                        this.debug('🔧 Enhanced Service Worker registered from ./sw.js', 'success');
+                        
+                        // Enhanced message handling from service worker
+                        navigator.serviceWorker.addEventListener('message', (event) => {
+                            console.log('🔥 SERVICE WORKER MESSAGE:', event.data);
+                            this.debug(`🔧 SW message received: ${event.data.type}`, 'info');
+                            if (event.data.type === 'peer_discovered') {
+                                this.handleServiceWorkerPeerDiscovery(event.data.data);
+                            } else if (event.data.type === 'prayer_received') {
+                                this.handlePrayerReceived(event.data.data);
+                            }
+                        });
+                        
+                        // Wait for Service Worker to be ready and controlled
+                        let swReadyAttempts = 0;
+                        const waitForSWController = async () => {
+                            while (swReadyAttempts < 20 && !navigator.serviceWorker.controller) {
+                                await new Promise(resolve => setTimeout(resolve, 250));
+                                swReadyAttempts++;
+                                console.log(`🔥 SERVICE WORKER: Waiting for controller... (${swReadyAttempts}/20)`);
+                                this.debug(`⏳ Waiting for SW controller... (${swReadyAttempts}/20)`, 'info');
+                            }
+                            
+                            if (navigator.serviceWorker.controller) {
+                                console.log('🔥 SERVICE WORKER: Controller ready - registering node');
+                                this.debug('🔧 SW controller ready - registering node', 'success');
+                                
+                                // Register this node with service worker
+                                navigator.serviceWorker.controller.postMessage({
+                                    type: 'register_peer',
+                                    data: {
+                                        nodeId: this.nodeId,
+                                        timestamp: Date.now(),
+                                        features: ['enhanced-p2p', 'webrtc', 'indexeddb'],
+                                        version: '2.1'
+                                    }
+                                });
+                                
+                                this.serviceWorkerReady = true;
+                                console.log('🔥 SERVICE WORKER: Registration complete and ready');
+                            } else {
+                                console.log('❌ SERVICE WORKER: Controller not available after 5 seconds');
+                                this.debug('❌ SW controller not available after 5 seconds', 'error');
+                                this.serviceWorkerReady = false;
+                            }
+                        };
+                        
+                        // Start waiting for controller in background
+                        waitForSWController();
+                        
+                        return true;
+                    } else {
+                        console.log('❌ SERVICE WORKER: Not supported in this browser');
+                        return false;
+                    }
+                } catch (error) {
+                    console.error('❌ SERVICE WORKER REGISTRATION FAILED:', error);
+                    this.debug('❌ Enhanced ServiceWorker registration failed: ' + error.message, 'error');
+                    
+                    // If external sw.js fails, we could fall back to inline, but let's see the error first
+                    console.log('🔥 SERVICE WORKER: External sw.js failed, check if file exists in same directory');
+                }
+                return false;
+            }
 // PSS Enhanced Network Service Worker
 // Persistent P2P Node for Prayers, Saints & Saviors
 // Version 2.1 with IndexedDB and cross-tab sync
@@ -1779,6 +1854,12 @@ console.log('🔧 Enhanced PSS Service Worker v2.1 loaded with IndexedDB support
             }
             
             async announceToNetwork() {
+                console.log('🔥 === STARTING NETWORK ANNOUNCEMENT ===');
+                console.log('🔥 Node ID:', this.nodeId);
+                console.log('🔥 Connections:', this.connections.size);
+                console.log('🔥 Service Worker Ready:', this.serviceWorkerReady);
+                console.log('🔥 Timestamp:', new Date().toISOString());
+                
                 const announcement = {
                     nodeId: this.nodeId,
                     vector: this.vector,
@@ -1790,6 +1871,8 @@ console.log('🔧 Enhanced PSS Service Worker v2.1 loaded with IndexedDB support
                     userAgent: navigator.userAgent.split(')')[0] + ')', // Partial UA for identification
                 };
                 
+                console.log('🔥 Announcement payload:', JSON.stringify(announcement, null, 2));
+                
                 // Multi-channel discovery approach with global fallback
                 const discoveryPromises = [
                     this.announceViaBroadcastChannel(announcement),
@@ -1798,13 +1881,26 @@ console.log('🔧 Enhanced PSS Service Worker v2.1 loaded with IndexedDB support
                     this.announceViaGlobalRendezvous(announcement)
                 ];
                 
+                console.log('🔥 Starting 4 discovery channels...');
+                
                 try {
                     const results = await Promise.allSettled(discoveryPromises);
+                    console.log('🔥 Discovery results:', results.map((r, i) => ({
+                        channel: ['BroadcastChannel', 'ServiceWorker', 'localStorage', 'GlobalRendezvous'][i],
+                        status: r.status,
+                        value: r.value,
+                        reason: r.reason?.message
+                    })));
+                    
                     const successful = results.filter(r => r.status === 'fulfilled').length;
+                    console.log(`🔥 ANNOUNCEMENT COMPLETE: ${successful}/4 channels successful`);
                     this.debug(`📡 Enhanced announcement: ${successful}/4 channels successful`, 'success');
                 } catch (error) {
+                    console.error('🔥 ANNOUNCEMENT FAILED:', error);
                     this.debug('❌ Failed to announce: ' + error.message, 'error');
                 }
+                
+                console.log('🔥 === ANNOUNCEMENT CYCLE COMPLETE ===\n');
             }
 
             async announceViaGlobalRendezvous(announcement) {
@@ -1947,34 +2043,65 @@ console.log('🔧 Enhanced PSS Service Worker v2.1 loaded with IndexedDB support
             }
 
             async announceViaServiceWorker(announcement) {
+                console.log('🔥 SERVICE WORKER: Starting announcement...');
+                console.log('🔥 SERVICE WORKER: serviceWorker in navigator?', 'serviceWorker' in navigator);
+                console.log('🔥 SERVICE WORKER: controller available?', !!navigator.serviceWorker?.controller);
+                console.log('🔥 SERVICE WORKER: serviceWorkerReady?', this.serviceWorkerReady);
+                
                 try {
                     if ('serviceWorker' in navigator) {
                         // Check if Service Worker is actually ready and controlled
                         if (!navigator.serviceWorker.controller) {
+                            console.log('🔥 SERVICE WORKER: No controller - waiting for SW...');
                             this.debug('⚠️ No SW controller - waiting for SW...', 'info');
                             await navigator.serviceWorker.ready;
+                            console.log('🔥 SERVICE WORKER: SW ready signal received');
                             
                             // Wait a bit more for controller to be available
                             let attempts = 0;
                             while (!navigator.serviceWorker.controller && attempts < 10) {
+                                console.log(`🔥 SERVICE WORKER: Waiting for controller (${attempts}/10)...`);
                                 await new Promise(resolve => setTimeout(resolve, 200));
                                 attempts++;
                             }
                         }
                         
-                        if (navigator.serviceWorker.controller && this.serviceWorkerReady) {
+                        if (navigator.serviceWorker.controller) {
+                            console.log('🔥 SERVICE WORKER: Sending REGISTER_PEER message to controller...');
+                            console.log('🔥 SERVICE WORKER: Announcement payload:', announcement);
+                            
+                            // Use Mikey's SW message format - REGISTER_PEER
                             navigator.serviceWorker.controller.postMessage({
-                                type: 'peer_announcement',
-                                data: announcement
+                                type: 'REGISTER_PEER',
+                                data: {
+                                    id: announcement.nodeId,
+                                    nodeId: announcement.nodeId,
+                                    timestamp: announcement.timestamp,
+                                    vector: announcement.vector,
+                                    features: announcement.features,
+                                    origin: announcement.origin,
+                                    userAgent: announcement.userAgent,
+                                    version: announcement.version,
+                                    capabilities: announcement.capabilities
+                                }
                             });
-                            this.debug('🔧 ServiceWorker announce sent to controller', 'success');
+                            
+                            console.log('🔥 SERVICE WORKER: REGISTER_PEER message sent successfully');
+                            this.debug('🔧 ServiceWorker peer registered', 'success');
                             return true;
                         } else {
+                            console.log('❌ SERVICE WORKER: Controller not available');
+                            console.log('❌ SERVICE WORKER: controller?', !!navigator.serviceWorker.controller);
+                            console.log('❌ SERVICE WORKER: serviceWorkerReady?', this.serviceWorkerReady);
                             this.debug('❌ SW controller not available yet', 'error');
                             return false;
                         }
+                    } else {
+                        console.log('❌ SERVICE WORKER: Not supported in this browser');
+                        return false;
                     }
                 } catch (error) {
+                    console.error('❌ SERVICE WORKER ERROR:', error);
                     this.debug('❌ ServiceWorker failed: ' + error.message, 'error');
                 }
                 return false;
