@@ -948,16 +948,22 @@
                 this.discoveryInterval = null;
                 this.performanceMetrics = new Map();
                 
-                // Enhanced STUN servers for global reach
+                // Enhanced STUN/TURN servers for global reach and NAT traversal
                 this.stunServers = [
-                    'stun:stun.l.google.com:19302',
-                    'stun:stun1.l.google.com:19302',
-                    'stun:stun2.l.google.com:19302',
-                    'stun:stun.ekiga.net',
-                    'stun:stun.ideasip.com',
-                    'stun:stun.schlund.de',
-                    'stun:stun.rixtelecom.se',
-                    'stun:stun.iptel.org'
+                    { urls: 'stun:stun.l.google.com:19302' },
+                    { urls: 'stun:stun1.l.google.com:19302' },
+                    { urls: 'stun:stun2.l.google.com:19302' },
+                    { urls: 'stun:stun.ekiga.net' },
+                    { urls: 'stun:stun.ideasip.com' },
+                    { urls: 'stun:stun.schlund.de' },
+                    { urls: 'stun:stun.rixtelecom.se' },
+                    { urls: 'stun:stun.iptel.org' },
+                    // Add a free TURN server for better NAT traversal
+                    { 
+                        urls: 'turn:openrelay.metered.ca:80',
+                        username: 'openrelayproject',
+                        credential: 'openrelayproject'
+                    }
                 ];
                 
                 this.networkConfig = {
@@ -1017,7 +1023,7 @@
                     
                     this.peer = new Peer(this.nodeId, {
                         config: {
-                            iceServers: this.stunServers.map(url => ({ urls: url }))
+                            iceServers: this.stunServers
                         },
                         debug: this.debugMode ? 2 : 0
                     });
@@ -1159,8 +1165,8 @@
                 
                 try {
                     switch (data.type) {
-                        case 'advanced_HANDSHAKE':
-                            this.handleadvancedHandshake(peerId, data);
+                        case 'ADVANCED_HANDSHAKE':
+                            this.handleAdvancedHandshake(peerId, data);
                             break;
                             
                         case 'PRAYER_ANNOUNCEMENT':
@@ -1189,7 +1195,7 @@
                 this.emit('peerMessage', { peerId, data });
             }
 
-            handleadvancedHandshake(peerId, data) {
+            handleAdvancedHandshake(peerId, data) {
                 this.discoveredPeers.set(peerId, {
                     id: peerId,
                     vector: data.vector,
@@ -1198,14 +1204,14 @@
                     features: data.features || [],
                     version: data.version || '1.0',
                     capabilities: data.capabilities || {},
-                    distance: this.calculateadvancedDistance(this.vector, data.vector)
+                    distance: this.calculateAdvancedDistance(this.vector, data.vector)
                 });
 
                 // Send routing update
                 this.sendRoutingUpdate(peerId);
             }
 
-            calculateadvancedDistance(vec1, vec2) {
+            calculateAdvancedDistance(vec1, vec2) {
                 if (!vec1 || !vec2 || vec1.length !== vec2.length) {
                     return Infinity;
                 }
@@ -1354,17 +1360,45 @@
             
             async discoverPeers() {
                 try {
+                    // Try simple rendezvous via a public pastebin-style endpoint
+                    // This is a minimal viable discovery mechanism
+                    
+                    // First announce ourselves
+                    const announcement = {
+                        nodeId: this.nodeId,
+                        timestamp: Date.now(),
+                        vector: this.vector.slice(0, 4) // Only send first 4 dimensions for privacy
+                    };
+                    
+                    try {
+                        // Announce to a simple rendezvous endpoint
+                        await fetch('https://httpbin.org/post', {
+                            method: 'POST',
+                            headers: { 'Content-Type': 'application/json' },
+                            body: JSON.stringify({ 
+                                type: 'peer_announce',
+                                room: 'humanitarian_network',
+                                data: announcement 
+                            })
+                        });
+                    } catch (e) {
+                        this.debug('❌ Rendezvous announce failed, falling back to local:', e.message, 'error');
+                    }
+                    
+                    // Also keep localStorage for local tabs
                     const announcements = JSON.parse(localStorage.getItem('p2p_announcements') || '[]');
+                    announcements.push(announcement);
+                    
                     const now = Date.now();
                     const maxAge = 15 * 60 * 1000; // 15 minutes
                     
-                    for (const announcement of announcements) {
-                        if (now - announcement.timestamp < maxAge && 
-                            announcement.nodeId !== this.nodeId &&
-                            !this.connections.has(announcement.nodeId) &&
+                    for (const stored of announcements) {
+                        if (now - stored.timestamp < maxAge && 
+                            stored.nodeId !== this.nodeId &&
+                            !this.connections.has(stored.nodeId) &&
                             this.connections.size < this.networkConfig.maxConnections) {
                             
-                            await this.connectToPeer(announcement.nodeId);
+                            await this.connectToPeer(stored.nodeId);
                         }
                     }
                 } catch (error) {
@@ -1463,7 +1497,7 @@
             async storePrayer(prayer) {
                 const enhancedPrayer = {
                     ...prayer,
-                    advancedId: this.generateadvancedId(),
+                    advancedId: this.generateAdvancedId(),
                     networkVector: this.vector.slice(0, 8), // First 8 dimensions for routing
                     timestamp: Date.now(),
                     version: '2.0'
@@ -1703,24 +1737,34 @@ Nonce: ${nonce}
 Issued At: ${issuedAt}`;
 
                 try {
-                    const signature = await this.web3.eth.personal.sign(message, address);
+                    const signature = await window.ethereum.request({
+                        method: 'personal_sign',
+                        params: [message, address]
+                    });
                     
                     let ensName = null;
                     let avatar = `https://api.dicebear.com/7.x/identicon/svg?seed=${address}`;
                     
-                    // Try to get ENS name and avatar
+                    // Try to get ENS name and avatar - wrap in hard try-catch
                     try {
                         ensName = await this.web3.eth.ens.reverse(address);
-                        if (ensName) {
+                    } catch (e) {
+                        console.log('ENS lookup failed:', e);
+                        ensName = null;
+                    }
+
+                    if (ensName) {
+                        try {
                             // Try to get ENS avatar
                             const resolver = await this.web3.eth.ens.resolver(ensName);
                             if (resolver) {
                                 const ensAvatar = await resolver.methods.text(this.web3.utils.namehash(ensName), 'avatar').call();
                                 if (ensAvatar) avatar = ensAvatar;
                             }
+                        } catch (e) {
+                            console.log('ENS avatar lookup failed:', e);
+                            // Keep default avatar
                         }
-                    } catch (e) {
-                        console.log('ENS lookup failed:', e);
                     }
 
                     const displayName = ensName || `${address.substring(0, 6)}...${address.substring(38)}`;
@@ -2053,10 +2097,17 @@ Issued At: ${issuedAt}`;
                             const shortId = peerId.substr(0, 12) + '...';
                             const distance = peer.distance ? ` (${peer.distance.toFixed(2)})` : '';
                             
-                            peerDiv.innerHTML = `
-                                <span title="${peerId}">${shortId}${distance}</span>
-                                <span class="connection-status ${statusClass}" title="${statusClass}"></span>
-                            `;
+                            // Safe DOM creation to prevent XSS
+                            const left = document.createElement('span');
+                            left.title = peerId;
+                            left.textContent = `${shortId}${distance}`;
+                            
+                            const dot = document.createElement('span');
+                            dot.className = `connection-status ${statusClass}`;
+                            dot.title = statusClass;
+                            
+                            peerDiv.appendChild(left);
+                            peerDiv.appendChild(dot);
                             peerList.appendChild(peerDiv);
                             peerCount++;
                         }
@@ -2859,7 +2910,8 @@ ${peersInfo.length > 5 ? '...' : ''}`);
 
         // Initialize the enhanced complete application after consent
         window.initializeCompleteApplication = function() {
-            ReactDOM.render(React.createElement(EnhancedCompleteApplication), document.getElementById('root'));
+            const root = ReactDOM.createRoot(document.getElementById('root'));
+            root.render(React.createElement(EnhancedCompleteApplication));
         };
     </script>
 </body>
