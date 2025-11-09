@@ -266,6 +266,13 @@
             padding-left: 5px; padding-right: 5px;
         }
 
+        .peer-item.peer-empty {
+            justify-content: flex-start;
+            color: rgba(255,255,255,0.7);
+            font-style: italic;
+            border-bottom: none;
+        }
+
         .connection-status {
             display: inline-block; width: 10px; height: 10px; 
             border-radius: 50%; margin-left: 10px;
@@ -2418,6 +2425,7 @@ Issued At: ${issuedAt}`;
             const [isNetworkReady, setIsNetworkReady] = useState(false);
             const [connectionQuality, setConnectionQuality] = useState('Initializing...');
             const networkRef = useRef(null);
+            const [peerDisplay, setPeerDisplay] = useState([]);
             
             const [newPrayer, setNewPrayer] = useState({
                 title: '', content: '', location: '', urgency: 'medium',
@@ -2574,55 +2582,73 @@ Issued At: ${issuedAt}`;
             };
             
             const updateNetworkDisplay = (stats) => {
-                const networkTitle = document.getElementById('network-title');
-                const networkStatsEl = document.getElementById('network-stats');
-                const peerList = document.getElementById('peer-list');
-                
-                if (networkTitle) {
-                    const swStatus = stats.serviceWorker ? '🔧SW' : '';
-                    networkTitle.textContent = `🌌 Enhanced P2P Network (${stats.algorithm} v${stats.version}) ${swStatus}`;
-                }
-                
-                if (networkStatsEl) {
-                    const quality = stats.quality || 0;
-                    const qualityIcon = quality > 0.8 ? '🟢' : quality > 0.5 ? '🟡' : '🔴';
-                    const swIcon = stats.serviceWorker ? '🔧' : '⚠️';
-                    networkStatsEl.innerHTML = `${qualityIcon} ${stats.connections || 0} enhanced links • ${stats.discoveredPeers || 0} mesh peers • Q${(quality * 100).toFixed(0)}% ${swIcon}SW`;
-                }
-                
-                if (peerList && networkRef.current) {
-                    peerList.innerHTML = '';
-                    let peerCount = 0;
-                    
-                    try {
-                        for (const [peerId, peer] of networkRef.current.discoveredPeers.entries()) {
-                            const peerDiv = document.createElement('div');
-                            peerDiv.className = 'peer-item';
-                            
-                            const isConnected = networkRef.current.connections.has(peerId);
-                            const statusClass = isConnected ? 'connected' : peer.via ? 'connecting' : 'disconnected';
-                            const shortId = peerId.substr(0, 12) + '...';
-                            const distance = peer.distance ? ` (${peer.distance.toFixed(2)})` : '';
-                            
-                            // Safe DOM creation to prevent XSS
-                            const left = document.createElement('span');
-                            left.title = peerId;
-                            left.textContent = `${shortId}${distance}`;
-                            
-                            const dot = document.createElement('span');
-                            dot.className = `connection-status ${statusClass}`;
-                            dot.title = statusClass;
-                            
-                            peerDiv.appendChild(left);
-                            peerDiv.appendChild(dot);
-                            peerList.appendChild(peerDiv);
-                            peerCount++;
-                        }
-                    } catch (error) {
-                        console.error('Error updating peer list:', error);
+                try {
+                    if (!networkRef.current) {
+                        setPeerDisplay([]);
+                        return;
                     }
+
+                    const peers = [];
+                    for (const [peerId, peer] of networkRef.current.discoveredPeers.entries()) {
+                        const isConnected = networkRef.current.connections.has(peerId);
+                        const statusClass = isConnected ? 'connected' : peer.via ? 'connecting' : 'disconnected';
+                        const shortId = peerId.length > 12 ? `${peerId.substr(0, 12)}...` : peerId;
+                        const distance = typeof peer.distance === 'number' ? ` (${peer.distance.toFixed(2)})` : '';
+
+                        peers.push({
+                            peerId,
+                            shortId,
+                            distance,
+                            statusClass,
+                            statusLabel: statusClass,
+                            via: peer.via || 'direct'
+                        });
+                    }
+
+                    setPeerDisplay(peers);
+                } catch (error) {
+                    console.error('Error updating peer display:', error);
+                    setPeerDisplay([]);
                 }
             };
+
+            const quality = networkStats.quality || 0;
+            const qualityIcon = quality > 0.8 ? '🟢' : quality > 0.5 ? '🟡' : '🔴';
+            const swIcon = networkStats.serviceWorker ? '🔧' : '⚠️';
+            const peerListElements = (peerDisplay.length === 0)
+                ? [
+                    React.createElement('div', {
+                        key: 'empty',
+                        className: 'peer-item peer-empty'
+                    }, 'No peers discovered yet. Discovery running...')
+                ]
+                : peerDisplay.map((peer) => React.createElement('div', {
+                        key: peer.peerId,
+                        className: 'peer-item'
+                    },
+                    React.createElement('span', {
+                        title: `${peer.peerId} • via ${peer.via}`
+                    }, `${peer.shortId}${peer.distance}`),
+                    React.createElement('span', {
+                        className: `connection-status ${peer.statusClass}`,
+                        title: peer.statusLabel
+                    })
+                ));
+
+            const networkStatusPanel = React.createElement('div', { className: 'network-status' },
+                React.createElement('div', {
+                    id: 'network-title',
+                    className: 'network-status-title'
+                }, `🌌 Enhanced P2P Network (${networkStats.algorithm} v${networkStats.version}) ${networkStats.serviceWorker ? '🔧SW' : ''}`),
+                React.createElement('div', {
+                    id: 'network-stats',
+                    className: 'network-status-summary'
+                }, `${qualityIcon} ${networkStats.connections || 0} enhanced links • ${networkStats.discoveredPeers || 0} mesh peers • Q${(quality * 100).toFixed(0)}% ${swIcon}SW`),
+                React.createElement('div', {
+                    id: 'peer-list',
+                    className: 'peer-list'
+                }, peerListElements)
+            );
 
             // Enhanced authentication methods
             const signInWithEthereum = useCallback(async () => {
@@ -2913,6 +2939,7 @@ Issued At: ${issuedAt}`;
             // Show enhanced initialization screen
             if (!isNetworkReady) {
                 return React.createElement('div', { className: 'container' },
+                    networkStatusPanel,
                     React.createElement('div', { className: 'hero' },
                         React.createElement('h1', null, '🌌 Prayers, Saints & Saviors'),
                         React.createElement('p', null, 'Enhanced P2P Global Humanitarian Coordination Network with Service Worker Support'),
@@ -2985,6 +3012,7 @@ Issued At: ${issuedAt}`;
             // Enhanced authentication screen
             if (!user) {
                 return React.createElement('div', { className: 'container' },
+                    networkStatusPanel,
                     React.createElement('div', { className: 'hero' },
                         React.createElement('h1', null, '🌌 Prayers, Saints & Saviors'),
                         React.createElement('p', null, 
@@ -3063,6 +3091,7 @@ Issued At: ${issuedAt}`;
 
             // Enhanced main application interface
             return React.createElement('div', { className: 'container' },
+                networkStatusPanel,
                 React.createElement('div', { className: 'hero' },
                     React.createElement('h1', null, '🌌 Prayers, Saints & Saviors'),
                     React.createElement('div', { style: { color: 'rgba(255,255,255,0.95)', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '20px', flexWrap: 'wrap' } },
