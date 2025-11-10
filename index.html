@@ -2559,7 +2559,58 @@
             async searchForPeers() {
                 const now = Date.now();
                 const maxAge = 10 * 60 * 1000; // 10 minutes
-                
+
+                // Discover peers currently registered with the PeerJS signalling layer
+                if (this.peer && typeof this.peer.listAllPeers === 'function') {
+                    try {
+                        const peerIds = await new Promise((resolve, reject) => {
+                            let settled = false;
+
+                            const onSuccess = (ids = []) => {
+                                if (!settled) {
+                                    settled = true;
+                                    resolve(Array.isArray(ids) ? ids : []);
+                                }
+                            };
+
+                            const onError = (err) => {
+                                if (!settled) {
+                                    settled = true;
+                                    reject(err || new Error('Unknown PeerJS discovery error'));
+                                }
+                            };
+
+                            try {
+                                const result = this.peer.listAllPeers((ids) => onSuccess(ids));
+                                // Support promise-based implementations of listAllPeers
+                                if (result && typeof result.then === 'function') {
+                                    result.then(onSuccess).catch(onError);
+                                }
+                            } catch (error) {
+                                onError(error);
+                            }
+
+                            // Fallback timeout in case neither callback nor promise resolves
+                            setTimeout(() => onError(new Error('PeerJS discovery timed out')), 4000);
+                        });
+
+                        const candidates = peerIds
+                            .filter(id => id && id !== this.nodeId &&
+                                !this.connections.has(id) &&
+                                !this.webrtcSessions.has(id))
+                            .slice(0, Math.max(0, this.networkConfig.maxConnections - this.connections.size));
+
+                        if (candidates.length > 0) {
+                            this.debug(`☁️ PeerJS cloud peers discovered: ${candidates.length}`, 'success');
+                            for (const candidate of candidates) {
+                                setTimeout(() => this.connectToPeer(candidate), Math.random() * 1500);
+                            }
+                        }
+                    } catch (error) {
+                        this.debug(`⚠️ PeerJS discovery failed: ${error.message}`, 'error');
+                    }
+                }
+
                 // Search localStorage
                 try {
                     const announcements = JSON.parse(localStorage.getItem('p2p_announcements_v2') || '[]');
