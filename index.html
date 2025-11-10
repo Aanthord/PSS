@@ -1126,15 +1126,44 @@
                 return filtered;
             }
 
+            isStaticDeployment() {
+                const protocol = window.location.protocol;
+                if (protocol === 'file:') {
+                    return true;
+                }
+
+                const host = (window.location.hostname || '').toLowerCase();
+                if (!host) {
+                    return false;
+                }
+
+                const localHosts = new Set(['localhost', '127.0.0.1', '::1']);
+                if (localHosts.has(host)) {
+                    return false;
+                }
+
+                const staticDomains = [
+                    'github.io',
+                    'gitlab.io',
+                    'vercel.app',
+                    'netlify.app',
+                    'pages.dev',
+                    'cloudflarepages.com'
+                ];
+
+                return staticDomains.some(domain => host.endsWith(domain));
+            }
+
             getPeerServerConfig() {
                 const isPageSecure = window.location.protocol === 'https:';
                 const defaultPort = window.location.port
                     ? parseInt(window.location.port, 10)
                     : (isPageSecure ? 443 : 80);
 
-                let host = window.location.hostname || 'localhost';
+                let host = window.location.hostname || '';
                 let port = Number.isFinite(defaultPort) ? defaultPort : (isPageSecure ? 443 : 80);
                 let secure = isPageSecure;
+                let hasCustomServer = false;
 
                 const candidate = this.userConfig?.nodeIp || this.userConfig?.neighborIp || '';
                 if (candidate) {
@@ -1150,13 +1179,24 @@
                             port = url.protocol === 'https:' ? 443 : 80;
                         }
                         secure = url.protocol === 'https:';
+                        hasCustomServer = true;
                     } catch (error) {
                         console.warn('Invalid peer server hint provided:', error.message);
                     }
                 }
 
+                const normalizedHost = host.toLowerCase();
+                const isLocalHost = ['localhost', '127.0.0.1', '::1'].includes(normalizedHost);
+
+                if (!hasCustomServer && (!host || this.isStaticDeployment())) {
+                    if (!isLocalHost) {
+                        // Use default PeerJS Cloud when running from static hosting
+                        return null;
+                    }
+                }
+
                 return {
-                    host,
+                    host: host || 'localhost',
                     port,
                     path: '/peerjs',
                     secure
@@ -1165,12 +1205,16 @@
 
             getGlobalAnnouncementEndpoints() {
                 const origin = window.location.origin;
-                const defaultEndpoints = [
-                    `${origin}/api/announce`,
-                    `${origin}/peers/announce`,
-                    'https://httpbin.org/post',
-                    'https://postman-echo.com/post'
-                ];
+                const defaultEndpoints = [];
+
+                if (!this.isStaticDeployment()) {
+                    defaultEndpoints.push(
+                        `${origin}/api/announce`,
+                        `${origin}/peers/announce`
+                    );
+                }
+
+                defaultEndpoints.push('https://httpbin.org/post');
 
                 const userEndpoints = [
                     ...this.generateUserEndpoints(this.userConfig.nodeIp, ['/api/announce', '/peers/announce']),
@@ -1182,10 +1226,14 @@
 
             getGlobalPeerEndpoints() {
                 const origin = window.location.origin;
-                const defaultEndpoints = [
-                    `${origin}/api/peers`,
-                    `${origin}/peers/list`
-                ];
+                const defaultEndpoints = [];
+
+                if (!this.isStaticDeployment()) {
+                    defaultEndpoints.push(
+                        `${origin}/api/peers`,
+                        `${origin}/peers/list`
+                    );
+                }
 
                 const userEndpoints = [
                     ...this.generateUserEndpoints(this.userConfig.nodeIp, ['/api/peers', '/peers/list']),
@@ -1240,21 +1288,24 @@
                     
                     // Initialize Service Worker first
                     await this.registerServiceWorker();
-                    
-                    const peerServer = this.getPeerServerConfig();
-                    this.debug(`🌍 Configuring PeerJS host ${peerServer.host}:${peerServer.port}${peerServer.secure ? ' (secure)' : ''}`, 'info');
 
-                    this.peer = new Peer(this.nodeId, {
-                        host: peerServer.host,
-                        port: peerServer.port,
-                        path: peerServer.path,
-                        secure: peerServer.secure,
+                    const peerServer = this.getPeerServerConfig();
+                    const peerOptions = {
                         config: {
                             iceServers: this.stunServers
                         },
                         debug: this.debugMode ? 2 : 0
-                    });
-                    
+                    };
+
+                    if (peerServer) {
+                        this.debug(`🌍 Configuring PeerJS host ${peerServer.host}:${peerServer.port}${peerServer.secure ? ' (secure)' : ''}`, 'info');
+                        Object.assign(peerOptions, peerServer);
+                    } else {
+                        this.debug('🌍 Using PeerJS Cloud signaling (static deployment detected)', 'info');
+                    }
+
+                    this.peer = new Peer(this.nodeId, peerOptions);
+
                     this.setupPeerEvents();
                     this.startPeerDiscovery();
                     this.startHeartbeat();
