@@ -1511,7 +1511,8 @@
                 pc.onicecandidate = (event) => {
                     if (event.candidate) {
                         this.postToServiceWorker('WEBRTC_ICE_CANDIDATE', {
-                            peerId,
+                            fromPeerId: this.nodeId,
+                            targetPeerId: peerId,
                             candidate: event.candidate
                         });
                     }
@@ -1529,8 +1530,8 @@
             }
 
             async handleCreateWebRTCConnection(payload) {
-                const { targetPeerId, connectionId, isInitiator, rtcConfig } = payload || {};
-                if (!targetPeerId) {
+                const { selfPeerId, targetPeerId, connectionId, isInitiator, rtcConfig } = payload || {};
+                if (!targetPeerId || !selfPeerId || selfPeerId !== this.nodeId) {
                     return;
                 }
 
@@ -1549,8 +1550,8 @@
             }
 
             async handleWebRTCOffer(payload) {
-                const { fromPeerId, offer, connectionId, rtcConfig } = payload || {};
-                if (!fromPeerId || !offer) {
+                const { fromPeerId, targetPeerId, offer, connectionId, rtcConfig } = payload || {};
+                if (!fromPeerId || !offer || !targetPeerId || targetPeerId !== this.nodeId) {
                     return;
                 }
 
@@ -1572,6 +1573,7 @@
 
                     this.postToServiceWorker('WEBRTC_ANSWER', {
                         fromPeerId: this.nodeId,
+                        targetPeerId: fromPeerId,
                         answer: session.pc.localDescription
                     });
                 } catch (error) {
@@ -1580,8 +1582,8 @@
             }
 
             async handleWebRTCAnswer(payload) {
-                const { fromPeerId, answer } = payload || {};
-                if (!fromPeerId || !answer) {
+                const { fromPeerId, targetPeerId, answer } = payload || {};
+                if (!fromPeerId || !answer || !targetPeerId || targetPeerId !== this.nodeId) {
                     return;
                 }
 
@@ -1607,6 +1609,7 @@
 
                     this.postToServiceWorker('WEBRTC_OFFER', {
                         fromPeerId: this.nodeId,
+                        targetPeerId: peerId,
                         offer: session.pc.localDescription
                     });
                 } catch (error) {
@@ -1615,20 +1618,20 @@
             }
 
             handleServiceWorkerIceCandidate(payload) {
-                const { peerId, candidate } = payload || {};
-                if (!peerId || !candidate) {
+                const { fromPeerId, targetPeerId, candidate } = payload || {};
+                if (!fromPeerId || !targetPeerId || targetPeerId !== this.nodeId || !candidate) {
                     return;
                 }
 
-                const session = this.webrtcSessions.get(peerId);
+                const session = this.webrtcSessions.get(fromPeerId);
                 if (!session || !session.pc) {
-                    this.queueIceCandidate(peerId, candidate);
+                    this.queueIceCandidate(fromPeerId, candidate);
                     return;
                 }
 
                 session.pc.addIceCandidate(candidate).catch(error => {
-                    this.debug(`⚠️ Queuing ICE candidate for ${peerId}: ${error.message}`, 'info');
-                    this.queueIceCandidate(peerId, candidate);
+                    this.debug(`⚠️ Queuing ICE candidate for ${fromPeerId}: ${error.message}`, 'info');
+                    this.queueIceCandidate(fromPeerId, candidate);
                 });
             }
 
@@ -1642,9 +1645,19 @@
             }
 
             handleServiceWorkerConnectionState(payload) {
-                const { peerId, state } = payload || {};
+                const { peerId, state, metadata } = payload || {};
                 if (!peerId || !state) {
                     return;
+                }
+
+                if (peerId === this.nodeId) {
+                    return;
+                }
+
+                if (metadata && metadata.sourcePeer && metadata.targetPeer) {
+                    if (metadata.sourcePeer !== this.nodeId && metadata.targetPeer !== this.nodeId) {
+                        return;
+                    }
                 }
 
                 const session = this.webrtcSessions.get(peerId);
@@ -1792,7 +1805,10 @@
 
                 const metadata = {
                     connectionId: session.connectionId,
-                    transport: 'webrtc'
+                    transport: 'webrtc',
+                    sourcePeer: this.nodeId,
+                    targetPeer: peerId,
+                    selfPeerId: this.nodeId
                 };
 
                 this.postToServiceWorker('WEBRTC_CONNECTION_STATE', {

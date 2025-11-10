@@ -12,7 +12,7 @@ let isOnline = false;
 let startTime = Date.now();
 
 // WebRTC P2P Implementation
-let webrtcConnections = new Map(); // peerId -> connection metadata
+let webrtcConnections = new Map(); // connectionKey -> connection metadata
 let pendingSignals = new Map(); // peerId -> pending signaling data
 let iceQueue = new Map(); // peerId -> queued ICE candidates
 let connectionStates = new Map(); // peerId -> connection state
@@ -152,9 +152,17 @@ async function getAllData(storeName, limit = 100) {
 }
 
 // WebRTC Signaling Management
-async function storeWebRTCSignal(targetPeer, signalType, signalData) {
+function getConnectionKey(peerA, peerB) {
+    if (!peerA || !peerB) {
+        return null;
+    }
+    return [peerA, peerB].sort().join('::');
+}
+
+async function storeWebRTCSignal(sourcePeer, targetPeer, signalType, signalData) {
     const signal = {
         id: `signal_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`,
+        sourcePeer: sourcePeer,
         targetPeer: targetPeer,
         signalType: signalType, // 'offer', 'answer', 'ice-candidate'
         signalData: signalData,
@@ -167,46 +175,51 @@ async function storeWebRTCSignal(targetPeer, signalType, signalData) {
     
     // Notify main thread about new signal
     broadcastToClients('webrtc_signal_received', {
+        sourcePeer: sourcePeer,
         targetPeer: targetPeer,
         signalType: signalType,
         signalData: signalData
     });
-    
+
     return signal;
 }
 
 // ICE Candidate Management
-async function storeICECandidate(peerId, candidate) {
+async function storeICECandidate(sourcePeer, targetPeer, candidate) {
     const iceCandidate = {
         id: `ice_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`,
-        peerId: peerId,
+        peerId: targetPeer,
+        sourcePeer: sourcePeer,
+        targetPeer: targetPeer,
         candidate: candidate,
         timestamp: Date.now(),
         processed: false
     };
-    
+
     await storeData('ice_candidates', iceCandidate);
-    console.log('🔧 SW: Stored ICE candidate for peer:', peerId);
-    
+    console.log('🔧 SW: Stored ICE candidate from', sourcePeer, 'for peer:', targetPeer);
+
     // Queue for processing if connection isn't ready
-    if (!iceQueue.has(peerId)) {
-        iceQueue.set(peerId, []);
+    const queueKey = getConnectionKey(sourcePeer, targetPeer) || targetPeer;
+    if (!iceQueue.has(queueKey)) {
+        iceQueue.set(queueKey, []);
     }
-    iceQueue.get(peerId).push(candidate);
-    
+    iceQueue.get(queueKey).push({ sourcePeer, targetPeer, candidate });
+
     // Notify main thread
     broadcastToClients('ice_candidate_received', {
-        peerId: peerId,
+        fromPeerId: sourcePeer,
+        targetPeerId: targetPeer,
         candidate: candidate
     });
-    
+
     return iceCandidate;
 }
 
 // Connection State Management
 async function updateConnectionState(peerId, state, metadata = {}) {
     const connection = {
-        id: peerId,
+        id: getConnectionKey(metadata.sourcePeer, metadata.targetPeer) || peerId,
         peerId: peerId,
         state: state, // 'connecting', 'connected', 'disconnected', 'failed'
         metadata: metadata,
@@ -237,62 +250,94 @@ async function updateConnectionState(peerId, state, metadata = {}) {
 }
 
 // WebRTC Peer Discovery and Connection Initiation
-async function initiateWebRTCConnection(targetPeerId, isInitiator = false) {
-    console.log('🔧 SW: Initiating WebRTC connection to:', targetPeerId, 'as initiator:', isInitiator);
-    
+async function initiateWebRTCConnection(sourcePeerId, targetPeerId, initiatorPeerId = sourcePeerId) {
+    if (!sourcePeerId || !targetPeerId || sourcePeerId === targetPeerId) {
+        return null;
+    }
+
+    console.log('🔧 SW: Initiating WebRTC connection between', sourcePeerId, 'and', targetPeerId, 'initiator:', initiatorPeerId);
+
     const connectionId = `conn_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
-    
+    const connectionKey = getConnectionKey(sourcePeerId, targetPeerId);
+
     const connectionMetadata = {
         id: connectionId,
+        sourcePeer: sourcePeerId,
         targetPeer: targetPeerId,
-        isInitiator: isInitiator,
+        initiator: initiatorPeerId,
         state: 'initiating',
         rtcConfig: rtcConfig,
         timestamp: Date.now()
     };
-    
-    webrtcConnections.set(targetPeerId, connectionMetadata);
+
+    if (connectionKey) {
+        webrtcConnections.set(connectionKey, connectionMetadata);
+    }
+
     await updateConnectionState(targetPeerId, 'connecting', connectionMetadata);
-    
-    // Notify main thread to create RTCPeerConnection
+    await updateConnectionState(sourcePeerId, 'connecting', connectionMetadata);
+
+    // Notify initiator client
     broadcastToClients('create_webrtc_connection', {
+        selfPeerId: sourcePeerId,
         targetPeerId: targetPeerId,
         connectionId: connectionId,
-        isInitiator: isInitiator,
+        isInitiator: initiatorPeerId === sourcePeerId,
         rtcConfig: rtcConfig
     });
-    
+
+    // Notify responder client
+    broadcastToClients('create_webrtc_connection', {
+        selfPeerId: targetPeerId,
+        targetPeerId: sourcePeerId,
+        connectionId: connectionId,
+        isInitiator: initiatorPeerId === targetPeerId,
+        rtcConfig: rtcConfig
+    });
+
     return connectionMetadata;
 }
 
 // Handle WebRTC Offer/Answer Exchange
-async function handleWebRTCOffer(fromPeerId, offer) {
-    console.log('🔧 SW: Received WebRTC offer from:', fromPeerId);
-    
-    // Store the offer
-    await storeWebRTCSignal(fromPeerId, 'offer', offer);
-    
-    // If we don't have a connection to this peer, initiate one
-    if (!webrtcConnections.has(fromPeerId)) {
-        await initiateWebRTCConnection(fromPeerId, false);
+async function handleWebRTCOffer(fromPeerId, targetPeerId, offer) {
+    console.log('🔧 SW: Received WebRTC offer from:', fromPeerId, 'for:', targetPeerId);
+
+    if (!targetPeerId) {
+        console.warn('🔧 SW: Offer missing target peer');
+        return;
     }
-    
+
+    // Store the offer
+    await storeWebRTCSignal(fromPeerId, targetPeerId, 'offer', offer);
+
+    const connectionKey = getConnectionKey(fromPeerId, targetPeerId);
+    if (connectionKey && !webrtcConnections.has(connectionKey)) {
+        await initiateWebRTCConnection(fromPeerId, targetPeerId, fromPeerId);
+    }
+
     // Notify main thread to handle offer
     broadcastToClients('webrtc_offer_received', {
         fromPeerId: fromPeerId,
+        targetPeerId: targetPeerId,
         offer: offer
     });
 }
 
-async function handleWebRTCAnswer(fromPeerId, answer) {
-    console.log('🔧 SW: Received WebRTC answer from:', fromPeerId);
-    
+async function handleWebRTCAnswer(fromPeerId, targetPeerId, answer) {
+    console.log('🔧 SW: Received WebRTC answer from:', fromPeerId, 'for:', targetPeerId);
+
+    if (!targetPeerId) {
+        console.warn('🔧 SW: Answer missing target peer');
+        return;
+    }
+
     // Store the answer
-    await storeWebRTCSignal(fromPeerId, 'answer', answer);
-    
+    await storeWebRTCSignal(fromPeerId, targetPeerId, 'answer', answer);
+
     // Notify main thread to handle answer
     broadcastToClients('webrtc_answer_received', {
         fromPeerId: fromPeerId,
+        targetPeerId: targetPeerId,
         answer: answer
     });
 }
@@ -360,7 +405,7 @@ async function announceToNetwork(nodeData) {
             
             // Initiate WebRTC connection
             setTimeout(() => {
-                initiateWebRTCConnection(peer.id, true);
+                initiateWebRTCConnection(normalizedNode.nodeId, peer.id, normalizedNode.nodeId);
             }, Math.random() * 3000); // Random delay to prevent thundering herd
         }
     }
@@ -394,8 +439,13 @@ async function optimizeNetworkTopology() {
         const peersToConnect = unconnectedPeers.slice(0, connectionsNeeded);
         
         for (const peer of peersToConnect) {
-            console.log('🔧 SW: Initiating connection to optimize topology:', peer.id);
-            await initiateWebRTCConnection(peer.id, true);
+            const partner = activePeers.find(p => p.id !== peer.id);
+            if (!partner) {
+                continue;
+            }
+
+            console.log('🔧 SW: Initiating connection to optimize topology:', peer.id, '↔', partner.id);
+            await initiateWebRTCConnection(partner.id, peer.id, partner.id);
         }
     }
 }
@@ -451,7 +501,11 @@ async function cleanupOldData() {
             if (now - (peer.lastSeen || 0) > maxAge) {
                 peers.delete(peerId);
                 connectionStates.delete(peerId);
-                webrtcConnections.delete(peerId);
+                for (const key of Array.from(webrtcConnections.keys())) {
+                    if (key && key.includes(peerId)) {
+                        webrtcConnections.delete(key);
+                    }
+                }
             }
         }
         
@@ -518,17 +572,17 @@ self.addEventListener('message', async event => {
                 break;
                 
             case 'WEBRTC_OFFER':
-                await handleWebRTCOffer(data.fromPeerId, data.offer);
+                await handleWebRTCOffer(data.fromPeerId, data.targetPeerId, data.offer);
                 break;
-                
+
             case 'WEBRTC_ANSWER':
-                await handleWebRTCAnswer(data.fromPeerId, data.answer);
+                await handleWebRTCAnswer(data.fromPeerId, data.targetPeerId, data.answer);
                 break;
-                
+
             case 'WEBRTC_ICE_CANDIDATE':
-                await storeICECandidate(data.peerId, data.candidate);
+                await storeICECandidate(data.fromPeerId, data.targetPeerId, data.candidate);
                 break;
-                
+
             case 'WEBRTC_CONNECTION_STATE':
                 await updateConnectionState(data.peerId, data.state, data.metadata);
                 break;
@@ -538,7 +592,7 @@ self.addEventListener('message', async event => {
                 break;
                 
             case 'INITIATE_WEBRTC_CONNECTION':
-                await initiateWebRTCConnection(data.targetPeerId, data.isInitiator);
+                await initiateWebRTCConnection(data.sourcePeerId, data.targetPeerId, data.initiatorPeerId || data.sourcePeerId);
                 break;
                 
             case 'GET_NETWORK_STATUS':
@@ -669,7 +723,11 @@ async function discoverPeers() {
             if (now - (peerData.lastSeen || 0) > maxPeerAge) {
                 peers.delete(peerId);
                 connectionStates.delete(peerId);
-                webrtcConnections.delete(peerId);
+                for (const key of Array.from(webrtcConnections.keys())) {
+                    if (key && key.includes(peerId)) {
+                        webrtcConnections.delete(key);
+                    }
+                }
                 console.log('🔧 SW: Removed stale peer:', peerId);
             }
         });
