@@ -329,15 +329,28 @@ async function routeP2PMessage(targetPeerId, messageType, messageData) {
 
 // Network Discovery and Announcement
 async function announceToNetwork(nodeData) {
-    console.log('🔧 SW: Announcing to P2P network:', nodeData.id);
-    
+    const peerId = nodeData.id || nodeData.nodeId;
+    console.log('🔧 SW: Announcing to P2P network:', peerId);
+
     // Store our own peer data
-    await storeData('peers', nodeData);
-    peers.set(nodeData.id, nodeData);
-    
+    if (!peerId) {
+        console.warn('🔧 SW: Cannot announce peer without identifier');
+        return;
+    }
+
+    const normalizedNode = {
+        ...nodeData,
+        id: peerId,
+        nodeId: nodeData.nodeId || peerId,
+        timestamp: nodeData.timestamp || Date.now()
+    };
+
+    await storeData('peers', normalizedNode);
+    peers.set(peerId, normalizedNode);
+
     // Broadcast to all connected clients
-    broadcastToClients('peer_announcement', nodeData);
-    
+    broadcastToClients('peer_announcement', normalizedNode);
+
     // Try to connect to recently discovered peers
     const recentPeers = await getAllData('peers', 10);
     for (const peer of recentPeers) {
@@ -463,9 +476,11 @@ self.addEventListener('sync', event => {
 
 // Message handling from main thread with WebRTC support
 self.addEventListener('message', async event => {
-    const { type, data } = event.data;
-    console.log('🔧 SW: Received message:', type);
-    
+    const rawType = event.data?.type;
+    const data = event.data?.data;
+    const type = typeof rawType === 'string' ? rawType.toUpperCase() : rawType;
+    console.log('🔧 SW: Received message:', rawType);
+
     try {
         switch (type) {
             case 'STORE_PRAYER':
@@ -480,11 +495,24 @@ self.addEventListener('message', async event => {
                 break;
                 
             case 'REGISTER_PEER':
-                const peerData = { ...data, lastSeen: Date.now(), connectionState: 'discovering' };
-                peers.set(data.id, peerData);
+                const peerId = data?.id || data?.nodeId;
+                if (!peerId) {
+                    console.warn('🔧 SW: REGISTER_PEER missing peer identifier');
+                    break;
+                }
+
+                const peerData = {
+                    ...data,
+                    id: peerId,
+                    nodeId: data.nodeId || peerId,
+                    lastSeen: Date.now(),
+                    connectionState: 'discovering'
+                };
+
+                peers.set(peerId, peerData);
                 await storeData('peers', peerData);
-                console.log('🔧 SW: Peer registered:', data.id);
-                
+                console.log('🔧 SW: Peer registered:', peerId);
+
                 // Announce to network and try to establish connections
                 await announceToNetwork(peerData);
                 break;
@@ -561,7 +589,24 @@ self.addEventListener('message', async event => {
                     });
                 }
                 break;
-                
+
+            case 'GET_ANNOUNCEMENTS':
+                const announcements = await getAllData('peers', data?.limit || 20);
+                if (event.ports && event.ports[0]) {
+                    const response = announcements.map(peer => ({
+                        nodeId: peer.nodeId || peer.id,
+                        timestamp: peer.timestamp || peer.lastSeen,
+                        vector: peer.vector || [],
+                        features: peer.features || []
+                    })).filter(item => item.nodeId);
+
+                    event.ports[0].postMessage({
+                        type: 'ANNOUNCEMENTS_DATA',
+                        announcements: response
+                    });
+                }
+                break;
+
             case 'CLEANUP':
                 await cleanupOldData();
                 break;
@@ -583,36 +628,12 @@ function broadcastToPeers(type, data) {
     const activeConnections = Array.from(connectionStates.values()).filter(
         conn => conn.state === 'connected'
     );
-    
+
     console.log(`🔧 SW: Broadcasting ${type} to ${activeConnections.length} WebRTC peers:`, data.id || data);
-    
+
     // Route via WebRTC connections
     for (const connection of activeConnections) {
         routeP2PMessage(connection.peerId, type, data);
-    }
-    
-    // Fallback: use localStorage for cross-tab communication
-    try {
-        const broadcast = {
-            id: 'broadcast_' + Math.random().toString(36).substr(2, 9),
-            type: type,
-            data: data,
-            timestamp: Date.now(),
-            sender: 'webrtc-service-worker'
-        };
-        
-        const broadcasts = JSON.parse(localStorage.getItem('network_broadcasts') || '[]');
-        broadcasts.push(broadcast);
-        
-        // Keep only recent broadcasts
-        if (broadcasts.length > 50) {
-            broadcasts.splice(0, broadcasts.length - 50);
-        }
-        
-        localStorage.setItem('network_broadcasts', JSON.stringify(broadcasts));
-        console.log('🔧 SW: Fallback broadcast stored in localStorage');
-    } catch (error) {
-        console.error('🔧 SW: Error in fallback broadcast:', error);
     }
 }
 
@@ -653,8 +674,8 @@ async function discoverPeers() {
             }
         });
         
-        // Update online status
-        isOnline = peers.size > 0 || navigator.onLine;
+        // Update online status using internal state only
+        isOnline = peers.size > 0 || connectionStates.size > 0;
         
         // Schedule topology optimization
         if (Math.random() < 0.2) { // 20% chance each discovery cycle

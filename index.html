@@ -958,7 +958,9 @@
                 this.performanceMetrics = new Map();
                 this.broadcastChannel = null;
                 this.serviceWorkerReady = false;
-                
+                this.webrtcSessions = new Map();
+                this.pendingIceCandidates = new Map();
+
                 // Enhanced STUN/TURN servers for global reach and NAT traversal
                 this.stunServers = [
                     { urls: 'stun:stun.l.google.com:19302' },
@@ -1124,11 +1126,48 @@
                 return filtered;
             }
 
+            getPeerServerConfig() {
+                const isPageSecure = window.location.protocol === 'https:';
+                const defaultPort = window.location.port
+                    ? parseInt(window.location.port, 10)
+                    : (isPageSecure ? 443 : 80);
+
+                let host = window.location.hostname || 'localhost';
+                let port = Number.isFinite(defaultPort) ? defaultPort : (isPageSecure ? 443 : 80);
+                let secure = isPageSecure;
+
+                const candidate = this.userConfig?.nodeIp || this.userConfig?.neighborIp || '';
+                if (candidate) {
+                    try {
+                        const normalized = candidate.includes('://')
+                            ? candidate
+                            : `${isPageSecure ? 'https' : 'http'}://${candidate}`;
+                        const url = new URL(normalized);
+                        host = url.hostname || host;
+                        if (url.port) {
+                            port = parseInt(url.port, 10);
+                        } else {
+                            port = url.protocol === 'https:' ? 443 : 80;
+                        }
+                        secure = url.protocol === 'https:';
+                    } catch (error) {
+                        console.warn('Invalid peer server hint provided:', error.message);
+                    }
+                }
+
+                return {
+                    host,
+                    port,
+                    path: '/peerjs',
+                    secure
+                };
+            }
+
             getGlobalAnnouncementEndpoints() {
+                const origin = window.location.origin;
                 const defaultEndpoints = [
-                    `http://185.187.243.129:3000/api/announce`,
-                    `https://185.187.243.129:3001/api/announce`,
-                    `http://185.187.243.129:8080/peers/announce`,
+                    `${origin}/api/announce`,
+                    `${origin}/peers/announce`,
                     'https://httpbin.org/post',
                     'https://postman-echo.com/post'
                 ];
@@ -1142,10 +1181,10 @@
             }
 
             getGlobalPeerEndpoints() {
+                const origin = window.location.origin;
                 const defaultEndpoints = [
-                    `http://185.187.243.129:3000/api/peers`,
-                    `https://185.187.243.129:3001/api/peers`,
-                    `http://185.187.243.129:8080/peers/list`
+                    `${origin}/api/peers`,
+                    `${origin}/peers/list`
                 ];
 
                 const userEndpoints = [
@@ -1202,7 +1241,14 @@
                     // Initialize Service Worker first
                     await this.registerServiceWorker();
                     
+                    const peerServer = this.getPeerServerConfig();
+                    this.debug(`🌍 Configuring PeerJS host ${peerServer.host}:${peerServer.port}${peerServer.secure ? ' (secure)' : ''}`, 'info');
+
                     this.peer = new Peer(this.nodeId, {
+                        host: peerServer.host,
+                        port: peerServer.port,
+                        path: peerServer.path,
+                        secure: peerServer.secure,
                         config: {
                             iceServers: this.stunServers
                         },
@@ -1248,13 +1294,7 @@
                         
                         // Enhanced message handling from service worker
                         navigator.serviceWorker.addEventListener('message', (event) => {
-                            console.log('🔥 SERVICE WORKER MESSAGE:', event.data);
-                            this.debug(`🔧 SW message received: ${event.data.type}`, 'info');
-                            if (event.data.type === 'peer_discovered') {
-                                this.handleServiceWorkerPeerDiscovery(event.data.data);
-                            } else if (event.data.type === 'prayer_received') {
-                                this.handlePrayerReceived(event.data.data);
-                            }
+                            this.handleServiceWorkerMessage(event.data);
                         });
                         
                         // Wait for Service Worker to be ready and controlled
@@ -1272,15 +1312,13 @@
                                 this.debug('🔧 SW controller ready - registering node', 'success');
                                 
                                 // Register this node with service worker
-                                navigator.serviceWorker.controller.postMessage({
-                                    type: 'register_peer',
-                                    data: {
-                                        nodeId: this.nodeId,
-                                        timestamp: Date.now(),
-                                        features: ['enhanced-p2p', 'webrtc', 'indexeddb'],
-                                        version: '2.1',
-                                        bootstrapHints: this.userConfig
-                                    }
+                                this.postToServiceWorker('REGISTER_PEER', {
+                                    id: this.nodeId,
+                                    nodeId: this.nodeId,
+                                    timestamp: Date.now(),
+                                    features: ['enhanced-p2p', 'webrtc', 'indexeddb'],
+                                    version: '2.1',
+                                    bootstrapHints: this.userConfig
                                 });
                                 
                                 this.serviceWorkerReady = true;
@@ -1311,15 +1349,460 @@
             }
 
             handleServiceWorkerPeerDiscovery(peerAnnouncement) {
-                if (peerAnnouncement.nodeId !== this.nodeId && 
+                if (peerAnnouncement.nodeId !== this.nodeId &&
                     !this.connections.has(peerAnnouncement.nodeId) &&
+                    !this.webrtcSessions.has(peerAnnouncement.nodeId) &&
                     this.connections.size < this.networkConfig.maxConnections) {
-                    
+
                     this.debug(`👀 SW discovered peer: ${peerAnnouncement.nodeId.substr(0, 12)}...`, 'info');
                     setTimeout(() => {
                         this.connectToPeer(peerAnnouncement.nodeId);
                     }, Math.random() * 2000); // Random delay to prevent thundering herd
                 }
+            }
+
+            handleServiceWorkerMessage(message) {
+                if (!message || !message.type) {
+                    return;
+                }
+
+                const { type, data } = message;
+                console.log('🔥 SERVICE WORKER MESSAGE:', message);
+                this.debug(`🔧 SW message received: ${type}`, 'info');
+
+                switch (type) {
+                    case 'peer_discovered':
+                    case 'peer_announcement':
+                        if (data) {
+                            this.handleServiceWorkerPeerDiscovery(data);
+                        }
+                        break;
+
+                    case 'prayer_received':
+                        if (data) {
+                            this.handlePrayerReceived(data);
+                        }
+                        break;
+
+                    case 'create_webrtc_connection':
+                        this.handleCreateWebRTCConnection(data);
+                        break;
+
+                    case 'webrtc_offer_received':
+                        this.handleWebRTCOffer(data);
+                        break;
+
+                    case 'webrtc_answer_received':
+                        this.handleWebRTCAnswer(data);
+                        break;
+
+                    case 'ice_candidate_received':
+                        this.handleServiceWorkerIceCandidate(data);
+                        break;
+
+                    case 'send_webrtc_message':
+                        this.handleOutboundWebRTCMessage(data);
+                        break;
+
+                    case 'connection_state_changed':
+                        this.handleServiceWorkerConnectionState(data);
+                        break;
+
+                    case 'webrtc_signal_received':
+                        // Debug logging for stored signals
+                        if (data?.signalType === 'offer' || data?.signalType === 'answer') {
+                            this.debug(`📡 Stored ${data.signalType} for ${data.targetPeer}`, 'info');
+                        }
+                        break;
+
+                    default:
+                        this.debug(`ℹ️ Unhandled SW message type: ${type}`, 'info');
+                }
+            }
+
+            ensureWebRTCSession(peerId, rtcConfig = null, connectionId = null) {
+                if (!peerId) {
+                    return null;
+                }
+
+                let session = this.webrtcSessions.get(peerId);
+                if (session) {
+                    if (connectionId && !session.connectionId) {
+                        session.connectionId = connectionId;
+                    }
+                    if (rtcConfig) {
+                        session.configuration = rtcConfig;
+                    }
+                    return session;
+                }
+
+                const configuration = rtcConfig || { iceServers: this.stunServers };
+                const pc = new RTCPeerConnection(configuration);
+
+                session = {
+                    peerId,
+                    pc,
+                    configuration,
+                    connectionId: connectionId || `conn_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`,
+                    isInitiator: false,
+                    dataChannel: null,
+                    channelOpen: false,
+                    remoteDescriptionSet: false,
+                    localDescriptionSet: false,
+                    quality: 0.5,
+                    cleanedUp: false,
+                    messagesSent: 0,
+                    messagesReceived: 0
+                };
+
+                this.webrtcSessions.set(peerId, session);
+
+                pc.onicecandidate = (event) => {
+                    if (event.candidate) {
+                        this.postToServiceWorker('WEBRTC_ICE_CANDIDATE', {
+                            peerId,
+                            candidate: event.candidate
+                        });
+                    }
+                };
+
+                pc.onconnectionstatechange = () => {
+                    this.handleWebRTCConnectionStateChange(peerId, pc.connectionState);
+                };
+
+                pc.ondatachannel = (event) => {
+                    this.attachWebRTCDataChannel(peerId, event.channel);
+                };
+
+                return session;
+            }
+
+            async handleCreateWebRTCConnection(payload) {
+                const { targetPeerId, connectionId, isInitiator, rtcConfig } = payload || {};
+                if (!targetPeerId) {
+                    return;
+                }
+
+                const session = this.ensureWebRTCSession(targetPeerId, rtcConfig, connectionId);
+                if (!session) {
+                    return;
+                }
+
+                session.isInitiator = !!isInitiator;
+
+                if (isInitiator) {
+                    const channel = session.pc.createDataChannel('pss-webrtc');
+                    this.attachWebRTCDataChannel(targetPeerId, channel);
+                    await this.createAndSendOffer(targetPeerId, session);
+                }
+            }
+
+            async handleWebRTCOffer(payload) {
+                const { fromPeerId, offer, connectionId, rtcConfig } = payload || {};
+                if (!fromPeerId || !offer) {
+                    return;
+                }
+
+                const session = this.ensureWebRTCSession(fromPeerId, rtcConfig, connectionId);
+                if (!session) {
+                    return;
+                }
+
+                session.isInitiator = false;
+
+                try {
+                    await session.pc.setRemoteDescription(offer);
+                    session.remoteDescriptionSet = true;
+                    await this.flushPendingIceCandidates(fromPeerId);
+
+                    const answer = await session.pc.createAnswer();
+                    await session.pc.setLocalDescription(answer);
+                    session.localDescriptionSet = true;
+
+                    this.postToServiceWorker('WEBRTC_ANSWER', {
+                        fromPeerId: this.nodeId,
+                        answer: session.pc.localDescription
+                    });
+                } catch (error) {
+                    this.debug(`❌ Failed to handle WebRTC offer from ${fromPeerId}: ${error.message}`, 'error');
+                }
+            }
+
+            async handleWebRTCAnswer(payload) {
+                const { fromPeerId, answer } = payload || {};
+                if (!fromPeerId || !answer) {
+                    return;
+                }
+
+                const session = this.ensureWebRTCSession(fromPeerId);
+                if (!session) {
+                    return;
+                }
+
+                try {
+                    await session.pc.setRemoteDescription(answer);
+                    session.remoteDescriptionSet = true;
+                    await this.flushPendingIceCandidates(fromPeerId);
+                } catch (error) {
+                    this.debug(`❌ Failed to process WebRTC answer from ${fromPeerId}: ${error.message}`, 'error');
+                }
+            }
+
+            async createAndSendOffer(peerId, session) {
+                try {
+                    const offer = await session.pc.createOffer();
+                    await session.pc.setLocalDescription(offer);
+                    session.localDescriptionSet = true;
+
+                    this.postToServiceWorker('WEBRTC_OFFER', {
+                        fromPeerId: this.nodeId,
+                        offer: session.pc.localDescription
+                    });
+                } catch (error) {
+                    this.debug(`❌ Failed to create WebRTC offer for ${peerId}: ${error.message}`, 'error');
+                }
+            }
+
+            handleServiceWorkerIceCandidate(payload) {
+                const { peerId, candidate } = payload || {};
+                if (!peerId || !candidate) {
+                    return;
+                }
+
+                const session = this.webrtcSessions.get(peerId);
+                if (!session || !session.pc) {
+                    this.queueIceCandidate(peerId, candidate);
+                    return;
+                }
+
+                session.pc.addIceCandidate(candidate).catch(error => {
+                    this.debug(`⚠️ Queuing ICE candidate for ${peerId}: ${error.message}`, 'info');
+                    this.queueIceCandidate(peerId, candidate);
+                });
+            }
+
+            handleOutboundWebRTCMessage(payload) {
+                const { targetPeerId, message } = payload || {};
+                if (!targetPeerId || !message) {
+                    return;
+                }
+
+                this.sendWebRTCMessage(targetPeerId, message);
+            }
+
+            handleServiceWorkerConnectionState(payload) {
+                const { peerId, state } = payload || {};
+                if (!peerId || !state) {
+                    return;
+                }
+
+                const session = this.webrtcSessions.get(peerId);
+                if (session) {
+                    session.serviceWorkerState = state;
+                }
+            }
+
+            queueIceCandidate(peerId, candidate) {
+                if (!this.pendingIceCandidates.has(peerId)) {
+                    this.pendingIceCandidates.set(peerId, []);
+                }
+                this.pendingIceCandidates.get(peerId).push(candidate);
+            }
+
+            async flushPendingIceCandidates(peerId) {
+                const session = this.webrtcSessions.get(peerId);
+                const queue = this.pendingIceCandidates.get(peerId) || [];
+
+                if (!session || !session.pc || queue.length === 0 || !session.remoteDescriptionSet) {
+                    return;
+                }
+
+                while (queue.length > 0) {
+                    const candidate = queue.shift();
+                    try {
+                        await session.pc.addIceCandidate(candidate);
+                    } catch (error) {
+                        this.debug(`⚠️ Failed to flush ICE candidate for ${peerId}: ${error.message}`, 'info');
+                    }
+                }
+
+                this.pendingIceCandidates.delete(peerId);
+            }
+
+            attachWebRTCDataChannel(peerId, channel) {
+                if (!channel) {
+                    return;
+                }
+
+                const session = this.ensureWebRTCSession(peerId);
+                if (!session) {
+                    return;
+                }
+
+                session.dataChannel = channel;
+
+                channel.binaryType = 'arraybuffer';
+
+                channel.onopen = () => {
+                    session.channelOpen = true;
+                    session.lastSeen = Date.now();
+                    session.quality = 1.0;
+                    this.pendingIceCandidates.delete(peerId);
+                    this.discoveredPeers.delete(peerId);
+                    this.isOnline = true;
+
+                    this.emit('peerConnected', { peerId, transport: 'webrtc' });
+
+                    const wrapper = {
+                        peer: peerId,
+                        send: (payload) => {
+                            const serialized = typeof payload === 'string'
+                                ? payload
+                                : JSON.stringify(payload);
+                            channel.send(serialized);
+                        }
+                    };
+
+                    session.wrapper = wrapper;
+
+                    try {
+                        this.sendAdvancedHandshake(wrapper);
+                    } catch (error) {
+                        this.debug(`⚠️ Failed to send WebRTC handshake to ${peerId}: ${error.message}`, 'info');
+                    }
+                };
+
+                channel.onmessage = (event) => {
+                    this.handleWebRTCDataMessage(peerId, event.data);
+                };
+
+                channel.onclose = () => {
+                    this.cleanupWebRTCConnection(peerId);
+                };
+
+                channel.onerror = (error) => {
+                    this.debug(`❌ WebRTC channel error for ${peerId}: ${error.message || error}`, 'error');
+                };
+            }
+
+            handleWebRTCDataMessage(peerId, payload) {
+                const session = this.webrtcSessions.get(peerId);
+                if (session) {
+                    session.messagesReceived = (session.messagesReceived || 0) + 1;
+                    session.lastSeen = Date.now();
+                }
+
+                let message = payload;
+                if (payload instanceof ArrayBuffer) {
+                    message = new TextDecoder().decode(payload);
+                }
+
+                if (typeof message === 'string') {
+                    try {
+                        message = JSON.parse(message);
+                    } catch (error) {
+                        message = { type: 'WEBRTC_MESSAGE', payload: message };
+                    }
+                }
+
+                if (message && message.type) {
+                    this.handlePeerMessage(peerId, message);
+                } else {
+                    this.debug(`ℹ️ Received raw WebRTC payload from ${peerId}`, 'info');
+                }
+            }
+
+            sendWebRTCMessage(peerId, payload) {
+                const session = this.webrtcSessions.get(peerId);
+                if (!session || !session.dataChannel || session.dataChannel.readyState !== 'open') {
+                    this.debug(`⚠️ WebRTC channel unavailable for ${peerId}`, 'info');
+                    return false;
+                }
+
+                try {
+                    const serialized = typeof payload === 'string' ? payload : JSON.stringify(payload);
+                    session.dataChannel.send(serialized);
+                    session.messagesSent = (session.messagesSent || 0) + 1;
+                    session.lastSeen = Date.now();
+                    return true;
+                } catch (error) {
+                    this.debug(`❌ Failed to send WebRTC message to ${peerId}: ${error.message}`, 'error');
+                    return false;
+                }
+            }
+
+            handleWebRTCConnectionStateChange(peerId, state) {
+                const session = this.webrtcSessions.get(peerId);
+                if (!session || session.cleanedUp) {
+                    return;
+                }
+
+                session.connectionState = state;
+
+                const metadata = {
+                    connectionId: session.connectionId,
+                    transport: 'webrtc'
+                };
+
+                this.postToServiceWorker('WEBRTC_CONNECTION_STATE', {
+                    peerId,
+                    state,
+                    metadata
+                });
+
+                if (state === 'connected') {
+                    session.quality = 1.0;
+                }
+
+                if (['disconnected', 'failed', 'closed'].includes(state)) {
+                    session.quality = 0;
+                    if (state !== 'closed') {
+                        this.debug(`⚠️ WebRTC connection ${state}: ${peerId}`, 'info');
+                    }
+                    this.cleanupWebRTCConnection(peerId);
+                }
+            }
+
+            cleanupWebRTCConnection(peerId) {
+                const session = this.webrtcSessions.get(peerId);
+                if (!session || session.cleanedUp) {
+                    return;
+                }
+
+                session.cleanedUp = true;
+
+                if (session.dataChannel) {
+                    try {
+                        if (session.dataChannel.readyState !== 'closed') {
+                            session.dataChannel.close();
+                        }
+                    } catch (error) {
+                        // Ignore
+                    }
+                }
+
+                if (session.pc) {
+                    try {
+                        session.pc.close();
+                    } catch (error) {
+                        // Ignore
+                    }
+                }
+
+                this.webrtcSessions.delete(peerId);
+                this.pendingIceCandidates.delete(peerId);
+
+                this.emit('peerDisconnected', { peerId, transport: 'webrtc' });
+            }
+
+            countActiveWebRTCConnections() {
+                let count = 0;
+                for (const session of this.webrtcSessions.values()) {
+                    if (session.dataChannel && session.dataChannel.readyState === 'open') {
+                        count++;
+                    }
+                }
+                return count;
             }
             
             setupPeerEvents() {
@@ -1652,7 +2135,6 @@
             }
 
             async announceViaGlobalRendezvous(announcement) {
-                // Global rendezvous with Mikey's persistent node
                 const globalEndpoints = this.getGlobalAnnouncementEndpoints();
 
                 if (globalEndpoints.length === 0) {
@@ -1664,39 +2146,41 @@
 
                 for (const endpoint of globalEndpoints) {
                     try {
-                        const isGlobalNode = endpoint.includes('185.187.243.129');
+                        const url = new URL(endpoint, window.location.origin);
                         const payload = {
-                            type: isGlobalNode ? 'peer_announcement' : 'pss_peer_announce',
+                            type: 'pss_peer_announce',
                             room: 'prayers_saints_saviors_v2',
                             data: announcement,
                             timestamp: Date.now(),
                             protocol_version: '2.1'
                         };
 
-                        const response = await fetch(endpoint, {
+                        const response = await fetch(url.toString(), {
                             method: 'POST',
-                            headers: { 
+                            headers: {
                                 'Content-Type': 'application/json',
                                 'X-Network-Protocol': 'PSS-Enhanced-P2P',
                                 'X-Node-Version': '2.1'
                             },
                             body: JSON.stringify(payload),
-                            signal: AbortSignal.timeout(isGlobalNode ? 8000 : 3000) // Longer timeout for global node
+                            signal: AbortSignal.timeout(5000)
                         });
-                        
+
                         if (response.ok) {
                             successCount++;
-                            if (isGlobalNode) {
-                                this.debug(`🌍 Global node announce ✓ ${endpoint.split('/')[2]}`, 'success');
-                                
-                                // Try to get peer list from global node
+                            this.debug(`🌐 Rendezvous ${url.host} ✓`, 'success');
+
+                            if (url.pathname.includes('/announce')) {
+                                const peersUrl = new URL(url.toString());
+                                peersUrl.pathname = url.pathname.replace('/announce', '/peers');
+
                                 try {
-                                    const peersResponse = await fetch(endpoint.replace('/announce', '/peers'), {
+                                    const peersResponse = await fetch(peersUrl.toString(), {
                                         method: 'GET',
                                         headers: { 'X-Network-Protocol': 'PSS-Enhanced-P2P' },
-                                        signal: AbortSignal.timeout(5000)
+                                        signal: AbortSignal.timeout(4000)
                                     });
-                                    
+
                                     if (peersResponse.ok) {
                                         const peersData = await peersResponse.json();
                                         if (peersData.peers && Array.isArray(peersData.peers)) {
@@ -1704,23 +2188,19 @@
                                         }
                                     }
                                 } catch (e) {
-                                    console.log('Could not fetch peer list from global node:', e.message);
+                                    console.log(`Could not fetch peer list from ${peersUrl.host}:`, e.message);
                                 }
-                            } else {
-                                this.debug(`🌐 Backup rendezvous ${endpoint.split('//')[1].split('/')[0]} ✓`, 'success');
                             }
                         }
                     } catch (error) {
-                        const domain = endpoint.split('//')[1]?.split('/')[0] || endpoint;
-                        const isGlobalNode = domain.includes('185.187.243.129');
-                        if (isGlobalNode) {
-                            this.debug(`❌ Global node ${domain} failed: ${error.message}`, 'error');
-                        } else {
-                            this.debug(`❌ Backup rendezvous ${domain} failed`, 'error');
-                        }
+                        const domain = (() => {
+                            try { return new URL(endpoint, window.location.origin).host; }
+                            catch { return endpoint; }
+                        })();
+                        this.debug(`❌ Rendezvous ${domain} failed: ${error.message}`, 'error');
                     }
                 }
-                
+
                 return successCount > 0;
             }
 
@@ -1740,7 +2220,8 @@
                     }
                     
                     // Add to discovered peers if not already connected
-                    if (!this.connections.has(peer.nodeId) && 
+                    if (!this.connections.has(peer.nodeId) &&
+                        !this.webrtcSessions.has(peer.nodeId) &&
                         !this.discoveredPeers.has(peer.nodeId) &&
                         this.connections.size < this.networkConfig.maxConnections) {
                         
@@ -1817,19 +2298,16 @@
                             console.log('🔥 SERVICE WORKER: Announcement payload:', announcement);
                             
                             // Use Mikey's SW message format - REGISTER_PEER
-                            navigator.serviceWorker.controller.postMessage({
-                                type: 'REGISTER_PEER',
-                                data: {
-                                    id: announcement.nodeId,
-                                    nodeId: announcement.nodeId,
-                                    timestamp: announcement.timestamp,
-                                    vector: announcement.vector,
-                                    features: announcement.features,
-                                    origin: announcement.origin,
-                                    userAgent: announcement.userAgent,
-                                    version: announcement.version,
-                                    capabilities: announcement.capabilities
-                                }
+                            this.postToServiceWorker('REGISTER_PEER', {
+                                id: announcement.nodeId,
+                                nodeId: announcement.nodeId,
+                                timestamp: announcement.timestamp,
+                                vector: announcement.vector,
+                                features: announcement.features,
+                                origin: announcement.origin,
+                                userAgent: announcement.userAgent,
+                                version: announcement.version,
+                                capabilities: announcement.capabilities
                             });
                             
                             console.log('🔥 SERVICE WORKER: REGISTER_PEER message sent successfully');
@@ -1878,6 +2356,25 @@
                 }
                 return false;
             }
+
+            postToServiceWorker(type, data = {}, transfer) {
+                if (!('serviceWorker' in navigator) || !navigator.serviceWorker.controller) {
+                    return false;
+                }
+
+                const message = {
+                    type: typeof type === 'string' ? type.toUpperCase() : type,
+                    data
+                };
+
+                if (transfer) {
+                    navigator.serviceWorker.controller.postMessage(message, transfer);
+                } else {
+                    navigator.serviceWorker.controller.postMessage(message);
+                }
+
+                return true;
+            }
             
             async startPeerDiscovery() {
                 await this.discoverPeers();
@@ -1908,6 +2405,7 @@
                                 const announcement = event.data.data;
                                 if (announcement.nodeId !== this.nodeId &&
                                     !this.connections.has(announcement.nodeId) &&
+                                    !this.webrtcSessions.has(announcement.nodeId) &&
                                     this.connections.size < this.networkConfig.maxConnections) {
                                     
                                     this.debug(`📻 BroadcastChannel peer: ${announcement.nodeId.substr(0, 12)}...`, 'info');
@@ -1931,9 +2429,10 @@
                         const maxAge = 10 * 60 * 1000; // 10 minutes
                         
                         for (const stored of announcements) {
-                            if (now - stored.timestamp < maxAge && 
+                            if (now - stored.timestamp < maxAge &&
                                 stored.nodeId !== this.nodeId &&
                                 !this.connections.has(stored.nodeId) &&
+                                !this.webrtcSessions.has(stored.nodeId) &&
                                 this.connections.size < this.networkConfig.maxConnections) {
                                 
                                 this.debug(`💾 Storage peer: ${stored.nodeId.substr(0, 12)}...`, 'info');
@@ -1998,11 +2497,12 @@
                 try {
                     const announcements = JSON.parse(localStorage.getItem('p2p_announcements_v2') || '[]');
                     for (const stored of announcements) {
-                        if (now - stored.timestamp < maxAge && 
+                        if (now - stored.timestamp < maxAge &&
                             stored.nodeId !== this.nodeId &&
                             !this.connections.has(stored.nodeId) &&
+                            !this.webrtcSessions.has(stored.nodeId) &&
                             this.connections.size < this.networkConfig.maxConnections) {
-                            
+
                             await this.connectToPeer(stored.nodeId);
                         }
                     }
@@ -2015,24 +2515,25 @@
                     try {
                         if ('serviceWorker' in navigator && navigator.serviceWorker.controller) {
                             const channel = new MessageChannel();
-                            
-                            navigator.serviceWorker.controller.postMessage({
-                                type: 'get_announcements'
-                            }, [channel.port2]);
-                            
+
+                            this.postToServiceWorker('GET_ANNOUNCEMENTS', { limit: 25 }, [channel.port2]);
+
                             channel.port1.onmessage = (event) => {
-                                const { announcements } = event.data;
-                                if (announcements && Array.isArray(announcements)) {
-                                    for (const stored of announcements) {
-                                        if (now - stored.timestamp < maxAge && 
-                                            stored.nodeId !== this.nodeId &&
-                                            !this.connections.has(stored.nodeId) &&
-                                            this.connections.size < this.networkConfig.maxConnections) {
-                                            
-                                            setTimeout(() => {
-                                                this.connectToPeer(stored.nodeId);
-                                            }, Math.random() * 2000); // Random delay
-                                        }
+                                const response = event.data || {};
+                                const announcements = Array.isArray(response.announcements)
+                                    ? response.announcements
+                                    : [];
+
+                                for (const stored of announcements) {
+                                    if (now - stored.timestamp < maxAge &&
+                                        stored.nodeId !== this.nodeId &&
+                                        !this.connections.has(stored.nodeId) &&
+                                        !this.webrtcSessions.has(stored.nodeId) &&
+                                        this.connections.size < this.networkConfig.maxConnections) {
+
+                                        setTimeout(() => {
+                                            this.connectToPeer(stored.nodeId);
+                                        }, Math.random() * 2000); // Random delay
                                     }
                                 }
                             };
@@ -2044,7 +2545,7 @@
             }
             
             async connectToPeer(peerId) {
-                if (peerId === this.nodeId || this.connections.has(peerId)) {
+                if (peerId === this.nodeId || this.connections.has(peerId) || this.webrtcSessions.has(peerId)) {
                     return;
                 }
                 
@@ -2187,12 +2688,13 @@
             
             startHeartbeat() {
                 this.heartbeatInterval = setInterval(() => {
+                    const activeWebRTC = this.countActiveWebRTCConnections();
                     const heartbeat = {
                         type: 'NETWORK_HEARTBEAT',
                         nodeId: this.nodeId,
                         timestamp: Date.now(),
                         metrics: {
-                            connections: this.connections.size,
+                            connections: this.connections.size + activeWebRTC,
                             prayers: this.prayers.size,
                             uptime: Date.now() - this.startTime,
                             quality: this.calculateNetworkQuality(),
@@ -2208,17 +2710,36 @@
                             this.debug(`❌ Heartbeat failed: ${peerId}`, 'error');
                         }
                     }
-                    
+
+                    for (const [peerId, session] of this.webrtcSessions.entries()) {
+                        if (session.dataChannel && session.dataChannel.readyState === 'open') {
+                            try {
+                                session.dataChannel.send(JSON.stringify(heartbeat));
+                                session.messagesSent = (session.messagesSent || 0) + 1;
+                                session.lastSeen = Date.now();
+                            } catch (error) {
+                                this.debug(`❌ WebRTC heartbeat failed: ${peerId}`, 'info');
+                            }
+                        }
+                    }
+
                     this.emit('heartbeat', this.getNetworkStats());
                 }, this.networkConfig.heartbeatInterval);
             }
 
             calculateNetworkQuality() {
-                if (this.connections.size === 0) return 0;
-                
-                const qualities = Array.from(this.connections.values())
+                const peerQualities = Array.from(this.connections.values())
                     .map(peerInfo => peerInfo.quality || 0);
-                
+
+                const webrtcQualities = Array.from(this.webrtcSessions.values())
+                    .filter(session => session.dataChannel && session.dataChannel.readyState === 'open')
+                    .map(session => session.quality || 0);
+
+                const qualities = [...peerQualities, ...webrtcQualities];
+                if (qualities.length === 0) {
+                    return 0;
+                }
+
                 return qualities.reduce((sum, q) => sum + q, 0) / qualities.length;
             }
 
@@ -2238,11 +2759,19 @@
             getNetworkStats() {
                 const globalPeers = Array.from(this.discoveredPeers.values())
                     .filter(peer => peer.via === 'global-node').length;
-                
+
+                const webRtcConnections = this.countActiveWebRTCConnections();
+                const peerJsConnections = this.connections.size;
+                const totalConnections = peerJsConnections + webRtcConnections;
+
                 return {
                     nodeId: this.nodeId,
                     isOnline: this.isOnline,
-                    connections: this.connections.size,
+                    connections: totalConnections,
+                    transports: {
+                        peerjs: peerJsConnections,
+                        webrtc: webRtcConnections
+                    },
                     discoveredPeers: this.discoveredPeers.size,
                     globalPeers: globalPeers,
                     prayers: this.prayers.size,
@@ -3499,10 +4028,8 @@ ${peersInfo.length > 5 ? '...' : ''}`);
                                     // Test Service Worker communication
                                     if (navigator.serviceWorker.controller) {
                                         const channel = new MessageChannel();
-                                        navigator.serviceWorker.controller.postMessage({
-                                            type: 'get_network_status'
-                                        }, [channel.port2]);
-                                        
+                                        net.postToServiceWorker('GET_NETWORK_STATUS', {}, [channel.port2]);
+
                                         channel.port1.onmessage = (event) => {
                                             console.log('🔧 SW Status Response:', event.data);
                                         };
@@ -3524,7 +4051,7 @@ ${peersInfo.length > 5 ? '...' : ''}`);
                                     
                                     // Test Global Rendezvous
                                     const rendezvousTargets = net.getGlobalPeerEndpoints();
-                                    const testEndpoint = rendezvousTargets.find(url => url.includes('185.187.243.129')) || rendezvousTargets[0];
+                                    const testEndpoint = rendezvousTargets[0];
 
                                     if (testEndpoint) {
                                         console.log(`🌍 Testing Global Rendezvous (${testEndpoint})...`);
